@@ -17,107 +17,144 @@ FACE_DETECTION_PATH = (
 
 
 class TrackedFace(object):
-    def __init__(self, bbox: [int], prob: float, id: int):
-        self.bbox = bbox
-        self.prob = prob
-        self.id = id
 
-    def label(self) -> str:
-        return f'Face {self.id}'
+    _id_counter = 0
+    _confirm_after = 1
+    _remove_after = 5
+
+    def __init__(self, bbox: [int], prob: float):
+        TrackedFace._id_counter += 1
+        self._id: int = self._id_counter
+        self._bbox: typing.List[int] = bbox
+        self._prob: float = prob
+        self._just_detected: bool = True
+        self._confirmed: bool = self._confirm_after == 0
+        self._confirm_count: int = 0 if self._confirmed else 1
+        self._removed: bool = False
+        self._remove_count: int = 0
+
+    def update(self, bbox: [int], detected: bool = False, prob: float = None):
+        if self._removed:
+            raise RuntimeError("trying to update removed track")
+        self._bbox = bbox
+        self._just_detected = detected
+        if detected:
+            if prob is None:
+                raise RuntimeError("detected must be set with prob")
+            self._remove_count = 0
+            self._prob = prob
+            if not self._confirmed:
+                self._confirm_count += 1
+                if self._confirm_count > self._confirm_after:
+                    self._confirm_count = 0
+                    self._confirmed = True
+
+    def set_not_detected(self):
+        if not self._confirmed:
+            self._removed = True
+        else:
+            self._remove_count += 1
+            if self._remove_count >= self._remove_after:
+                self._removed = True
+
+    @property
+    def id(self) -> int:
+        return self._id
+
+    @property
+    def bbox(self) -> typing.List[int]:
+        return self._bbox
+
+    @property
+    def removed(self) -> bool:
+        return self._removed
+
+    @property
+    def just_detected(self) -> bool:
+        return self._just_detected
+
+    @property
+    def remove_count(self) -> int:
+        return self._remove_count
+
+    @property
+    def confirm_count(self) -> int:
+        return self._confirm_count
+
+    @property
+    def confirmed(self) -> bool:
+        return self._confirmed
 
 
 class FacesTracker(object):
     def __init__(self,
                  checkpoint_dir=os.path.join(os.path.dirname(__file__), '..', LOG_DIR, 'checkpoints'),
                  face_detection_path=FACE_DETECTION_PATH,
-                 count_add: int = 1, count_remove: int = 5,
                  intersection_threshold: float = .2,
+                 detect_each: int = 10,
                  gpu_id=GPU_ID,
                  ):
 
-        # initial track id
-        self._track_index = 0
-        # current active tracks
-        self._current_tracks = []
-        # tracks candidates to start track (id: face not found count)
-        self._candidates_add = {}
-        self._count_add = count_add
-        # tracks candidates to interrupt (id: face not found count)
-        self._candidates_remove = {}
-        self._count_remove = count_remove
-
         # intersection coef for identifying tracked and detected faces
-        self._intersection_threshold = intersection_threshold
+        self._intersection_threshold: float = intersection_threshold
 
-        self._re3_tracker = re3_tracker.Re3Tracker(checkpoint_dir, gpu_id=gpu_id)
+        self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(checkpoint_dir, gpu_id=gpu_id)
 
-        self._face_detect_driver = driver.load_driver("openvino")()
+        self._face_detect_driver: driver.ServingDriver = driver.load_driver("openvino")()
         self._face_detect_driver.load_model(face_detection_path)
 
-    def track(self, frame: np.ndarray) -> (typing.List[TrackedFace], typing.List[typing.List[float]]):
+        self._detect_each: int = detect_each
+        self._counter: int = -1
+
+        self._tracked: typing.List[TrackedFace] = []
+
+    def track(self, frame: np.ndarray) -> typing.List[TrackedFace]:
 
         bgr_frame = frame[:, :, ::-1]
 
+        self._counter += 1
+
         # existing tracks
-        tracked_faces = self._track(bgr_frame, self._current_tracks)
+        tracked_faces = self._track(bgr_frame, [t.id for t in self._tracked])
+
+        if self._counter % self._detect_each > 0:
+            for i, t in enumerate(tracked_faces):
+                self._tracked[i].update(t)
+            return self._tracked
 
         # detected faces
         detected_faces = self._detect_faces(bgr_frame)
-
-        result = []
-
-        tracks_has_detected = []
+        detected_track_ids = []
 
         for detected_face in detected_faces:
+
             detected_bbox, detected_prob = detected_face[:4], detected_face[4]
             is_tracked = False
-            for tracked_i, tracked_face in enumerate(tracked_faces):
-                tracked_id = self._current_tracks[tracked_i]
-                if tracked_id not in tracks_has_detected:
-                    if bbox.box_intersection(detected_bbox, tracked_face) > self._intersection_threshold:
+            track = None
+
+            for t in self._tracked:
+                if t.id not in detected_track_ids:
+                    if bbox.box_intersection(detected_bbox, t.bbox) > self._intersection_threshold:
                         is_tracked = True
-                        tracks_has_detected.append(tracked_id)
-                        self._track_add(bgr_frame, tracked_id, detected_bbox)
-                        if self._count_add > 0 and self._track_index in self._candidates_add:
-                            if self._candidates_add[self._track_index] > self._count_add:
-                                del self._candidates_add[self._track_index]
-                                detected = True
-                            else:
-                                self._candidates_add[self._track_index] += 1
-                                detected = False
-                        else:
-                            detected = True
-                        if detected:
-                            result.append(TrackedFace(detected_bbox, detected_prob, tracked_id))
+                        t.update(detected_bbox, detected=True, prob=detected_prob)
+                        track = t
                         break
+
             if not is_tracked:
-                self._track_index += 1
-                self._current_tracks.append(self._track_index)
-                tracks_has_detected.append(self._track_index)
-                print(f"!!!! add face ID {self._track_index} with coords {detected_bbox} and prob {detected_prob}")
-                self._track_add(bgr_frame, self._track_index, detected_bbox)
-                if self._count_add == 0:
-                    result.append(TrackedFace(detected_bbox, detected_prob, self._track_index))
-                else:
-                    self._candidates_add[self._track_index] = 1
+                track = TrackedFace(detected_bbox, detected_prob)
+                self._tracked.append(track)
 
-        remove_tracks = []
-        for i in self._current_tracks:
-            if i not in tracks_has_detected:
-                if i in self._candidates_add:
-                    del self._candidates_add[i]
-                    remove_tracks.append(i)
-                    continue
-                if i not in self._candidates_remove:
-                    self._candidates_remove[i] = 0
-                self._candidates_remove[i] += 1
-                if self._candidates_remove[i] > self._count_remove:
-                    del self._candidates_remove[i]
-                    remove_tracks.append(i)
+            if track is not None:
+                detected_track_ids.append(track.id)
+                self._track_add(bgr_frame, track.id, detected_bbox)
 
-        self._current_tracks = [e for e in self._current_tracks if e not in remove_tracks]
+        for tr in self._tracked:
+            if tr.id not in detected_track_ids:
+                tr.set_not_detected()
 
-        return result, tracked_faces
+        self._tracked = [t for t in self._tracked if not t.removed]
+
+        return self._tracked
 
     def _track(self, bgr_frame: np.ndarray, indexes: [int]):
         if len(indexes) == 0:

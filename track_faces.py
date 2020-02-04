@@ -49,24 +49,24 @@ def track_faces(source: str = None, output: str = None, each_frame: int = 1, tra
             if not source_is_file:
                 img = cv2.flip(img, 1)
 
-            faces, tracked = tracker.track(img)
+            faces = tracker.track(img)
 
             img_avg = (img.shape[1] + img.shape[0]) / 2
             for face in faces:
                 box = face.bbox
+                color = (0, 255, 0) if face.confirmed else (0, 127, 0)
                 cv2.rectangle(img,
                         (int(box[0]), int(box[1])),
                         (int(box[2]), int(box[3])),
-                        (0, 255, 0), 2)
-                cv2.putText(img, face.label(), (int(box[0]), int(box[1] - img_avg / 100)),
-                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 1600, (0, 255, 0),
+                        color, 2 if face.just_detected else 1)
+                lbl = f'Face {face.id}' if face.confirmed else '---'
+                if face.confirm_count > 0:
+                    lbl = f'{lbl}, cf {face.confirm_count}'
+                if face.remove_count > 0:
+                    lbl = f'{lbl}, rm {face.remove_count}'
+                cv2.putText(img, lbl, (int(box[0]), int(box[1] - img_avg / 100)),
+                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 1600, color,
                             thickness=1, lineType=cv2.LINE_AA)
-
-            for tr in tracked:
-                cv2.rectangle(img,
-                        (int(tr[0]), int(tr[1])),
-                        (int(tr[2]), int(tr[3])),
-                        (0, 180, 0), 1)
 
             cv2.imshow('Webcam', img)
 

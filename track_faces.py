@@ -50,6 +50,9 @@ def track_faces(
             cnt += 1
             ret_val, img = src.read()
 
+            if cnt % 100 == 0:
+                print(f"processed {cnt} frames")
+
             if source_is_file and cnt % each_frame > 0:
                 continue
 
@@ -164,14 +167,26 @@ if __name__ == "__main__":
         help="Process each N frame (for video file only)",
     )
     parser.add_argument(
+        "--re3-checkpoint-dir",
+        type=str,
+        default="./models/re3-tracker/checkpoints",
+        help="re3 model checkpoints dir",
+    )
+    parser.add_argument(
+        "--facenet-path",
+        type=str,
+        default="./models/model-facenet-pretrained-1.0.0-vgg-openvino-cpu/facenet.xml",
+        help="facenet model path",
+    )
+    parser.add_argument(
         "--screen", action="store_true", help="Show result on screen",
     )
     args = parser.parse_args()
 
     re3_tracker.SPEED_OUTPUT = False
     tracker = faces_tracker.FacesTracker(
-        re3_checkpoint_dir="./models/re3-tracker/checkpoints",
-        facenet_path="./models/model-facenet-pretrained-1.0.0-vgg-openvino-cpu/facenet.xml",
+        re3_checkpoint_dir=args.re3_checkpoint_dir,
+        facenet_path=args.facenet_path,
     )
     track_faces(
         source=args.video_source,

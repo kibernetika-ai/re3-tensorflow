@@ -112,11 +112,14 @@ class TrackedFace(object):
 class FacesTracker(object):
     def __init__(
         self,
-        re3_checkpoint_dir=os.path.join(
+        re3_checkpoint_dir: str = os.path.join(
             os.path.dirname(__file__), "..", LOG_DIR, "checkpoints"
         ),
-        face_detection_path=FACE_DETECTION_PATH,
-        facenet_path=os.path.join(os.path.dirname(__file__), "..", LOG_DIR, "facenet"),
+        face_detection_path: str = FACE_DETECTION_PATH,
+        face_detection_threshold: float = .5,
+        face_detection_split_counts: str = "2",
+        face_detection_min_size: int = 10,
+        facenet_path: str = os.path.join(os.path.dirname(__file__), "..", LOG_DIR, "facenet"),
         intersection_threshold: float = 0.2,
         detect_each: int = 10,
         gpu_id=GPU_ID,
@@ -135,6 +138,14 @@ class FacesTracker(object):
             "openvino"
         )()
         self._face_detect_driver.load_model(face_detection_path)
+        self._face_detect_threshold: float = face_detection_threshold
+        try:
+            self._face_detect_split_counts: typing.List[int] = sorted(
+                [int(s) for s in face_detection_split_counts.split(",")]
+            )
+        except ValueError:
+            self._face_detect_split_counts: typing.List[int] = []
+        self._face_detect_min_area = face_detection_min_size ** 2
 
         self._facenet_driver: driver.ServingDriver = driver.load_driver("openvino")()
         self._facenet_driver.load_model(facenet_path)
@@ -172,17 +183,13 @@ class FacesTracker(object):
                 self._tracked[i].update(t.astype(int))
             return self._tracked
 
-        # detected faces
-        detected_faces = self._detect_faces(bgr_frame)
+        # detected faces: bboxes and proabbilities
+        detected_bboxes, detected_probs = self._detect_faces(bgr_frame)
         detected_track_ids = []
 
-        for detected_face in detected_faces:
+        for i, detected_bbox in enumerate(detected_bboxes):
 
-            # detection bounding box and probability
-            detected_bbox, detected_prob = (
-                detected_face[:4].astype(int),
-                detected_face[4],
-            )
+            detected_prob = detected_probs[i]
             is_tracked = False
             track = None
 
@@ -293,9 +300,41 @@ class FacesTracker(object):
     def _track_add(self, bgr_frame: np.ndarray, index: int, bbox: [int]):
         self._re3_tracker.track(f"{index}", bgr_frame, bbox)
 
-    def _detect_faces(
-        self, bgr_frame: np.ndarray, threshold: float = 0.5, offset=(0, 0)
-    ):
+    def _detect_faces(self, bgr_frame: np.ndarray):
+        boxes = self._detect_faces_split(bgr_frame)
+
+        if len(self._face_detect_split_counts) > 0:
+            def add_box(b):
+                for i, b0 in enumerate(boxes):
+                    if bbox.box_intersection(b0, b) > 0.3:
+                        # set the largest proba to existing box
+                        boxes[i][4] = max(b0[4], b[4])
+                        return
+                boxes.resize((boxes.shape[0] + 1, boxes.shape[1]), refcheck=False)
+                boxes[-1] = b
+
+            for split_count in self._face_detect_split_counts:
+                size_multiplier = 2. / (split_count + 1)
+                xstep = int(bgr_frame.shape[1] / (split_count + 1))
+                ystep = int(bgr_frame.shape[0] / (split_count + 1))
+
+                xlimit = int(np.ceil(bgr_frame.shape[1] * (1 - size_multiplier)))
+                ylimit = int(np.ceil(bgr_frame.shape[0] * (1 - size_multiplier)))
+                for x in range(0, xlimit, xstep):
+                    for y in range(0, ylimit, ystep):
+                        y_border = min(bgr_frame.shape[0], int(np.ceil(y + bgr_frame.shape[0] * size_multiplier)))
+                        x_border = min(bgr_frame.shape[1], int(np.ceil(x + bgr_frame.shape[1] * size_multiplier)))
+                        crop = bgr_frame[y:y_border, x:x_border, :]
+
+                        box_candidates = self._detect_faces_split(crop, (x, y))
+
+                        for b in box_candidates:
+                            add_box(b)
+
+        return boxes[:, :4].astype(int), boxes[:, 4]
+
+    def _detect_faces_split(self, bgr_frame: np.ndarray, offset=(0, 0)):
+
         drv = self._face_detect_driver
         # Get boxes shaped [N, 5]:
         # xmin, ymin, xmax, ymax, confidence
@@ -308,7 +347,7 @@ class FacesTracker(object):
         outputs = drv.predict({input_name: inference_frame})
         output = outputs[output_name]
         output = output.reshape(-1, 7)
-        bboxes_raw = output[output[:, 2] > threshold]
+        bboxes_raw = output[output[:, 2] > self._face_detect_threshold]
         # Extract 5 values
         boxes = bboxes_raw[:, 3:7]
         confidence = np.expand_dims(bboxes_raw[:, 2], axis=0).transpose()
@@ -319,6 +358,8 @@ class FacesTracker(object):
         boxes[:, 2] = boxes[:, 2] * bgr_frame.shape[1] + offset[0]
         boxes[:, 1] = boxes[:, 1] * bgr_frame.shape[0] + offset[1]
         boxes[:, 3] = boxes[:, 3] * bgr_frame.shape[0] + offset[1]
+        if boxes is not None:
+            boxes = boxes[(boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0]) >= self._face_detect_min_area]
         return boxes
 
     def _face_embeddings(

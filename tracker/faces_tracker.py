@@ -183,7 +183,7 @@ class FacesTracker(object):
                 self._tracked[i].update(t.astype(int))
             return self._tracked
 
-        # detected faces: bboxes and proabbilities
+        # detected faces: bounding boxes and probabilities
         detected_bboxes, detected_probs = self._detect_faces(bgr_frame)
         detected_track_ids = []
 

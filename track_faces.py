@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 
 from tracker import faces_tracker
+from tracker import re3_tracker
 
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
@@ -25,11 +26,13 @@ def track_faces(source: str = None, output: str = None, each_frame: int = 1, tra
 
     video_writer = None
     if source_is_file:
-        fps = src.get(cv2.CAP_PROP_FPS)
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-        width = int(src.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(src.get(cv2.CAP_PROP_FRAME_HEIGHT))
         if output is not None:
+            if os.path.exists(output):
+                os.remove(output)
+            fps = src.get(cv2.CAP_PROP_FPS)
+            fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+            width = int(src.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(src.get(cv2.CAP_PROP_FRAME_HEIGHT))
             video_writer = cv2.VideoWriter(output, fourcc, fps / each_frame, frameSize=(width, height))
 
     try:
@@ -59,13 +62,28 @@ def track_faces(source: str = None, output: str = None, each_frame: int = 1, tra
                         (int(box[0]), int(box[1])),
                         (int(box[2]), int(box[3])),
                         color, 2 if face.just_detected else 1)
-                lbl = f'Face {face.id}' if face.confirmed else '---'
+                lbl = f'Track {face.id}' if face.confirmed else '---'
+                if face.class_id:
+                    lbl = f'{lbl}, class {face.class_id}'
                 if face.confirm_count > 0:
                     lbl = f'{lbl}, cf {face.confirm_count}'
-                if face.remove_count > 0:
+                if face.to_remove:
                     lbl = f'{lbl}, rm {face.remove_count}'
-                cv2.putText(img, lbl, (int(box[0]), int(box[1] - img_avg / 100)),
-                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 1600, color,
+                crd = (int(box[0]), int(box[1] - img_avg / 100))
+                cv2.putText(img, lbl, crd,
+                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 2400, (0, 0, 0),
+                            thickness=3, lineType=cv2.LINE_AA)
+                cv2.putText(img, lbl, crd,
+                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 2400, color,
+                            thickness=1, lineType=cv2.LINE_AA)
+
+            for i, l in enumerate(tracker.get_log()):
+                crd = (30, 50 + i * 22)
+                cv2.putText(img, l, crd,
+                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 2400, (0, 0, 0),
+                            thickness=3, lineType=cv2.LINE_AA)
+                cv2.putText(img, l, crd,
+                            cv2.FONT_HERSHEY_SIMPLEX, img_avg / 2400, (0, 255, 0),
                             thickness=1, lineType=cv2.LINE_AA)
 
             cv2.imshow('Webcam', img)
@@ -85,7 +103,6 @@ def track_faces(source: str = None, output: str = None, each_frame: int = 1, tra
         if video_writer is not None:
             print('Written video to %s.' % output)
             video_writer.release()
-
 
 
 if __name__ == '__main__':
@@ -110,7 +127,11 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    tracker = faces_tracker.FacesTracker()
+    re3_tracker.SPEED_OUTPUT = False
+    tracker = faces_tracker.FacesTracker(
+        re3_checkpoint_dir='./models/re3-tracker/checkpoints',
+        facenet_path='./models/model-facenet-pretrained-1.0.0-vgg-openvino-cpu/facenet.xml',
+    )
     track_faces(
         source=args.video_source,
         output=args.video_output,

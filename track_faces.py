@@ -15,7 +15,7 @@ def track_faces(
     source: str = None,
     output: str = None,
     each_frame: int = 1,
-    tracker: faces_tracker.FacesTracker = None,
+    face_tracker: faces_tracker.FacesTracker = None,
     screen: bool = True,
 ):
 
@@ -29,6 +29,10 @@ def track_faces(
 
     src = cv2.VideoCapture(source)
     cnt = 0
+    screen_init = True
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    black = (0, 0, 0)
+    green = (0, 255, 0)
 
     video_writer = None
     if source_is_file:
@@ -63,12 +67,13 @@ def track_faces(
             if not source_is_file:
                 img = cv2.flip(img, 1)
 
-            faces = tracker.track(img)
+            faces = face_tracker.track(img)
 
             img_avg = (img.shape[1] + img.shape[0]) / 2
+            f_size = img_avg / 2400
             for face in faces:
                 box = face.bbox
-                color = (0, 255, 0) if face.confirmed else (0, 127, 0)
+                color = green if face.confirmed else (0, 127, 0)
                 cv2.rectangle(
                     img,
                     (int(box[0]), int(box[1])),
@@ -79,63 +84,37 @@ def track_faces(
                 lbl = f"Track {face.id}" if face.confirmed else "---"
                 if face.class_id:
                     lbl = f"{lbl}, class {face.class_id}"
+                if face.prob:
+                    lbl = "{}, prb {:.2f}".format(lbl, face.prob)
                 if face.confirm_count > 0:
                     lbl = f"{lbl}, cf {face.confirm_count}"
                 if face.to_remove:
                     lbl = f"{lbl}, rm {face.remove_count}"
                 crd = (int(box[0]), int(box[1] - img_avg / 100))
                 cv2.putText(
-                    img,
-                    lbl,
-                    crd,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    img_avg / 2400,
-                    (0, 0, 0),
-                    thickness=3,
-                    lineType=cv2.LINE_AA,
+                    img, lbl, crd, font, f_size, black, thickness=3,
                 )
                 cv2.putText(
-                    img,
-                    lbl,
-                    crd,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    img_avg / 2400,
-                    color,
-                    thickness=1,
-                    lineType=cv2.LINE_AA,
+                    img, lbl, crd, font, f_size, color, thickness=1,
                 )
 
-            for i, l in enumerate(tracker.get_log()):
+            for i, l in enumerate(tracker.log):
                 crd = (30, 50 + i * 22)
-                cv2.putText(
-                    img,
-                    l,
-                    crd,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    img_avg / 2400,
-                    (0, 0, 0),
-                    thickness=3,
-                    lineType=cv2.LINE_AA,
-                )
-                cv2.putText(
-                    img,
-                    l,
-                    crd,
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    img_avg / 2400,
-                    (0, 255, 0),
-                    thickness=1,
-                    lineType=cv2.LINE_AA,
-                )
+                cv2.putText(img, l, crd, font, f_size, black, thickness=3)
+                cv2.putText(img, l, crd, font, f_size, green, thickness=1)
 
             if screen:
-                cv2.imshow("Webcam", img)
+                if screen_init:
+                    cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow("Output", int(img.shape[1] / 2), int(img.shape[0] / 2))
+                    screen_init = False
+                cv2.imshow("Output", img)
 
             if video_writer is not None:
                 video_writer.write(img)
 
-            keyPressed = cv2.waitKey(1)
-            if keyPressed == 27 or keyPressed == 1048603:
+            key_pressed = cv2.waitKey(1)
+            if key_pressed == 27 or key_pressed == 1048603:
                 break  # esc to quit
 
     except (KeyboardInterrupt, SystemExit) as e:
@@ -147,6 +126,11 @@ def track_faces(
         if video_writer is not None:
             print("Written video to %s." % output)
             video_writer.release()
+
+        profiling = tracker.profiler.get_and_reset_dict()
+        print("Profiling:")
+        for k in profiling:
+            print(f" - {k}: {profiling[k]}")
 
 
 if __name__ == "__main__":
@@ -175,14 +159,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--face-detection-path",
         type=str,
-        default=faces_tracker.FACE_DETECTION_PATH,
+        default=None,
         help="face detection model path (default openvino face-detection-adas-0001)",
     )
     parser.add_argument(
-        "--facenet-path",
-        type=str,
-        default="./models/model-facenet-pretrained-1.0.0-vgg-openvino-cpu/facenet.xml",
-        help="facenet model path",
+        "--facenet-path", type=str, default=None, help="facenet model path",
     )
     parser.add_argument(
         "--screen", action="store_true", help="Show result on screen",
@@ -199,6 +180,6 @@ if __name__ == "__main__":
         source=args.video_source,
         output=args.video_output,
         each_frame=args.video_each_frame,
-        tracker=tracker,
+        face_tracker=tracker,
         screen=args.screen,
     )

@@ -7,19 +7,15 @@ import numpy as np
 from constants import GPU_ID
 from constants import LOG_DIR
 from detector import Detector
-from detector.faces_openvino import FacesOpenvino
-from detector.faces_tfopencv import FacesTFOpenCV
+from detector.getter import get_face_detector
 from tools import bbox
 from tools import images
+from tools.profiler import Profiler, profiler_pipe
+from tracker import facenet
 from tracker import re3_tracker
 from tracker.tracked_face import TrackedFace
 
 from sklearn.neighbors import KDTree
-
-FACE_DETECTION_PATH = (
-    "/opt/intel/openvino/deployment_tools/intel_models/"
-    "face-detection-adas-0001/FP32/face-detection-adas-0001.xml"
-)
 
 
 class FacesTracker(object):
@@ -28,31 +24,31 @@ class FacesTracker(object):
         re3_checkpoint_dir: str = os.path.join(
             os.path.dirname(__file__), "..", LOG_DIR, "checkpoints"
         ),
-        face_detection_path: str = FACE_DETECTION_PATH,
-        face_detection_threshold: float = .5,
-        facenet_path: str = os.path.join(os.path.dirname(__file__), "..", LOG_DIR, "facenet"),
+        face_detection_path: str = None,
+        facenet_path: str = None,
         intersection_threshold: float = 0.2,
         detect_each: int = 10,
         gpu_id=GPU_ID,
         add_min=0.3,
         add_max=0.5,
+        profiler: Profiler = None,
     ):
+
+        self._profiler: Profiler = profiler_pipe(profiler)
 
         # intersection coef for identifying tracked and detected faces
         self._intersection_threshold: float = intersection_threshold
 
         self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
-            re3_checkpoint_dir, gpu_id=gpu_id
+            re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
         )
 
-        self._face_detector: Detector = FacesOpenvino(face_detection_path, face_detection_threshold)
-        # self._face_detector: Detector = FacesTFOpenCV("./models/model-tf-opencv-face-detector-1.0.1")
+        self._face_detector: Detector = get_face_detector(face_detection_path)
 
-        self._facenet_driver: driver.ServingDriver = driver.load_driver("openvino")()
-        self._facenet_driver.load_model(facenet_path)
-        self._facenet_input_shape = list(self._facenet_driver.inputs.values())[0]
-        self._facenet_input_name = list(self._facenet_driver.inputs)[0]
-        self._facenet_output_name = list(self._facenet_driver.outputs)[0]
+        if facenet_path is None:
+            self._facenet = None
+        else:
+            self._facenet = facenet.Facenet(facenet_path, self._profiler)
 
         self._detect_each: int = detect_each
         self._counter: int = -1
@@ -85,8 +81,10 @@ class FacesTracker(object):
             return self._tracked
 
         # detected faces: bounding boxes and probabilities
-        print("????", self._face_detector.detect(bgr_frame))
+        prf = "face detection"
+        self._profiler.start(prf)
         detected_bboxes, detected_probs = self._face_detector.detect(bgr_frame)
+        self._profiler.stop(prf)
         detected_track_ids = []
 
         for i, detected_bbox in enumerate(detected_bboxes):
@@ -125,13 +123,16 @@ class FacesTracker(object):
         # clear removed tracks
         self._tracked = [t for t in self._tracked if not t.removed]
 
+        if self._facenet is None:
+            return self._tracked
+
         # classify tracked faces
         classified_tracks = [
             t for t in self._tracked if t.confirmed and not t.to_remove
         ]
         if len(classified_tracks) > 0:
             confirmed_tracks_bboxes = [t.bbox for t in classified_tracks]
-            embs = self._face_embeddings(frame, confirmed_tracks_bboxes)
+            embs = self._facenet.embeddings(frame, confirmed_tracks_bboxes)
             if self._kd_tree is None:
                 class_ids = self._kd_init(embs)
                 for i, t in enumerate(classified_tracks):
@@ -195,28 +196,22 @@ class FacesTracker(object):
     def _track(self, bgr_frame: np.ndarray, indexes: [int]):
         if len(indexes) == 0:
             return []
+        self._profiler.add('re3 tracks', len(indexes))
+        prf = "re3 tracking"
+        self._profiler.start(prf)
         if len(indexes) == 1:
-            return [self._re3_tracker.track(f"{indexes[0]}", bgr_frame)]
-        return self._re3_tracker.multi_track([f"{i}" for i in indexes], bgr_frame)
+            tracks = [self._re3_tracker.track(f"{indexes[0]}", bgr_frame)]
+        else:
+            tracks = self._re3_tracker.multi_track([f"{i}" for i in indexes], bgr_frame)
+        self._profiler.stop(prf)
+        return tracks
 
     def _track_add(self, bgr_frame: np.ndarray, index: int, bbox: [int]):
+        self._profiler.add('re3 tracks added', 1)
+        prf = "re3 track adding"
+        self._profiler.start(prf)
         self._re3_tracker.track(f"{index}", bgr_frame, bbox)
-
-    def _face_embeddings(
-        self, frame: np.ndarray, source: typing.List[typing.List[int]]
-    ):
-        face_images = images.get_images(
-            frame,
-            np.array([s[:4] for s in source]),
-            normalization=images.DEFAULT_NORMALIZATION,
-        )
-        embeddings = []
-        for face_img in face_images:
-            face_img = face_img.transpose([2, 0, 1]).reshape(self._facenet_input_shape)
-            outputs = self._facenet_driver.predict({self._facenet_input_name: face_img})
-            output = outputs[self._facenet_output_name]
-            embeddings.append(output.reshape([-1]))
-        return (np.asarray(embeddings) + 1.0) / 2
+        self._profiler.stop(prf)
 
     def _kd_init(self, embs: np.ndarray) -> typing.List:
         self._kd_embeddings = embs
@@ -237,5 +232,10 @@ class FacesTracker(object):
     def _log(self, msg: str):
         self._l.append(msg)
 
-    def get_log(self) -> typing.List[str]:
+    @property
+    def log(self) -> typing.List[str]:
         return self._l
+
+    @property
+    def profiler(self) -> Profiler:
+        return self._profiler

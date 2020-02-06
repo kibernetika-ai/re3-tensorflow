@@ -173,6 +173,12 @@ if __name__ == "__main__":
         help="re3 model checkpoints dir",
     )
     parser.add_argument(
+        "--face-detection-path",
+        type=str,
+        default=faces_tracker.FACE_DETECTION_PATH,
+        help="face detection model path (default openvino face-detection-adas-0001)",
+    )
+    parser.add_argument(
         "--facenet-path",
         type=str,
         default="./models/model-facenet-pretrained-1.0.0-vgg-openvino-cpu/facenet.xml",
@@ -186,6 +192,7 @@ if __name__ == "__main__":
     re3_tracker.SPEED_OUTPUT = False
     tracker = faces_tracker.FacesTracker(
         re3_checkpoint_dir=args.re3_checkpoint_dir,
+        face_detection_path=args.face_detection_path,
         facenet_path=args.facenet_path,
     )
     track_faces(

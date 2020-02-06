@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -54,8 +55,9 @@ def track_faces(
             cnt += 1
             ret_val, img = src.read()
 
-            if cnt % 100 == 0:
-                print(f"processed {cnt} frames")
+            if cnt % 10 == 0:
+                print(f"{datetime.utcnow()}: processed {cnt} frames")
+
 
             if source_is_file and cnt % each_frame > 0:
                 continue

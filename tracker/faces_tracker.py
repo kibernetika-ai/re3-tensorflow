@@ -1,7 +1,6 @@
 import os
 
 import typing
-from ml_serving.drivers import driver
 import numpy as np
 
 from constants import GPU_ID
@@ -9,7 +8,6 @@ from constants import LOG_DIR
 from detector import Detector
 from detector.getter import get_face_detector
 from tools import bbox
-from tools import images
 from tools.profiler import Profiler, profiler_pipe
 from tracker import facenet
 from tracker import re3_tracker

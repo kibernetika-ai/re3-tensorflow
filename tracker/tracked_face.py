@@ -5,7 +5,7 @@ class TrackedFace(object):
 
     _id_counter = 0
     _confirm_after = 1
-    _remove_after = 5
+    _remove_after = 3
 
     def __init__(self, bbox: typing.List[int], prob: float):
         TrackedFace._id_counter += 1

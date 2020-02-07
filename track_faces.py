@@ -147,10 +147,16 @@ if __name__ == "__main__":
         "--video-output", type=str, default=None, help="Video target",
     )
     parser.add_argument(
-        "--video-each-frame",
+        "--video-frame-freq",
         type=int,
         default=1,
-        help="Process each N frame (for video file only)",
+        help="Video processing frames frequency: process each N frame (for video file only)",
+    )
+    parser.add_argument(
+        "--video-detect-freq",
+        type=int,
+        default=10,
+        help="Faces detection frequency: detect for each N processed frame (for video file only)",
     )
     parser.add_argument(
         "--re3-checkpoint-dir",
@@ -177,11 +183,12 @@ if __name__ == "__main__":
         re3_checkpoint_dir=args.re3_checkpoint_dir,
         face_detection_path=args.face_detection_path,
         facenet_path=args.facenet_path,
+        detect_each=args.video_detect_freq,
     )
     track_faces(
         source=args.video_source,
         output=args.video_output,
-        each_frame=args.video_each_frame,
+        each_frame=args.video_frame_freq,
         face_tracker=tracker,
         screen=args.screen,
     )

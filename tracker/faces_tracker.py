@@ -113,7 +113,7 @@ class FacesTracker(object):
             # apply existing or new track updating
             if track is not None:
                 detected_track_ids.append(track.id)
-                self._track_add(bgr_frame, track.id, detected_bbox)
+                self._track_add(bgr_frame, track.id, detected_bbox, is_tracked)
 
         # mark existing tracks as de
         for tr in self._tracked:
@@ -206,9 +206,9 @@ class FacesTracker(object):
         self._profiler.stop(prf)
         return tracks
 
-    def _track_add(self, bgr_frame: np.ndarray, index: int, bbox: [int]):
-        self._profiler.add('re3 tracks added', 1)
-        prf = "re3 track adding"
+    def _track_add(self, bgr_frame: np.ndarray, index: int, bbox: [int], is_tracked: bool):
+        self._profiler.add('re3 tracks {}'.format('updated' if is_tracked else 'added'), 1)
+        prf = "re3 track {}".format('updating' if is_tracked else 'adding')
         self._profiler.start(prf)
         self._re3_tracker.track(f"{index}", bgr_frame, bbox)
         self._profiler.stop(prf)

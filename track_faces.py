@@ -18,6 +18,7 @@ def track_faces(
     each_frame: int = 1,
     face_tracker: faces_tracker.FacesTracker = None,
     screen: bool = True,
+    log_each_frame: int = 100,
 ):
 
     if source is None:
@@ -36,6 +37,7 @@ def track_faces(
     green = (0, 255, 0)
 
     video_writer = None
+    fps = None
     if source_is_file:
         if output is not None:
             if os.path.exists(output):
@@ -55,9 +57,11 @@ def track_faces(
             cnt += 1
             ret_val, img = src.read()
 
-            if cnt % 10 == 0:
-                print(f"{datetime.utcnow()}: processed {cnt} frames")
-
+            if cnt % log_each_frame == 0:
+                l = f"{datetime.utcnow()}: processed {cnt} frames"
+                if fps is not None:
+                    l = "{}, {:.2f} sec".format(l, cnt / fps)
+                print(l)
 
             if source_is_file and cnt % each_frame > 0:
                 continue
@@ -159,6 +163,12 @@ if __name__ == "__main__":
         help="Faces detection frequency: detect for each N processed frame (for video file only)",
     )
     parser.add_argument(
+        "--log-each-frame",
+        type=int,
+        default=100,
+        help="StdOut record after each N frame",
+    )
+    parser.add_argument(
         "--re3-checkpoint-dir",
         type=str,
         default="./models/re3-tracker/checkpoints",
@@ -191,4 +201,5 @@ if __name__ == "__main__":
         each_frame=args.video_frame_freq,
         face_tracker=tracker,
         screen=args.screen,
+        log_each_frame=args.log_each_frame,
     )

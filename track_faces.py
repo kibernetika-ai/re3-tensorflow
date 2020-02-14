@@ -12,15 +12,12 @@ np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
 
 
-def track_faces(
-    source: str = None,
-    output: str = None,
-    each_frame: int = 1,
-    face_tracker: faces_tracker.FacesTracker = None,
-    screen: bool = True,
-    log_each_frame: int = 100,
-):
-
+def track_faces(source: str = None,
+                output: str = None,
+                each_frame: int = 1,
+                face_tracker: faces_tracker.FacesTracker = None,
+                screen: bool = True,
+                log_each_frame: int = 100):
     if source is None:
         source_is_file = False
         source = 0
@@ -51,9 +48,7 @@ def track_faces(
             )
 
     try:
-
         while True:
-
             cnt += 1
             ret_val, img = src.read()
 

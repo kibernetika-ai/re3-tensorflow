@@ -7,8 +7,7 @@ import numpy as np
 
 from constants import GPU_ID
 from constants import LOG_DIR
-from detector import Detector
-from detector.getter import get_face_detector
+from detector import detector
 from tools import bbox
 from tools.profiler import Profiler, profiler_pipe
 from tracker import facenet
@@ -37,20 +36,16 @@ class FaceTrackerReportItem(object):
 
 
 class FacesTracker(object):
-    def __init__(
-        self,
-        re3_checkpoint_dir: str = os.path.join(
-            os.path.dirname(__file__), "..", LOG_DIR, "checkpoints"
-        ),
-        face_detection_path: str = None,
-        facenet_path: str = None,
-        intersection_threshold: float = 0.2,
-        detect_each: int = 10,
-        gpu_id=GPU_ID,
-        add_min=0.3,
-        add_max=0.5,
-        profiler: Profiler = None,
-    ):
+    def __init__(self,
+                 re3_checkpoint_dir: str = os.path.join(os.path.dirname(__file__), "..", LOG_DIR, "checkpoints"),
+                 face_detection_path: str = None,
+                 facenet_path: str = None,
+                 intersection_threshold: float = 0.2,
+                 detect_each: int = 10,
+                 gpu_id=GPU_ID,
+                 add_min=0.3,
+                 add_max=0.5,
+                 profiler: Profiler = None):
 
         self._profiler: Profiler = profiler_pipe(profiler)
 
@@ -61,7 +56,7 @@ class FacesTracker(object):
             re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
         )
 
-        self._face_detector: Detector = get_face_detector(face_detection_path)
+        self._face_detector: detector.Detector = detector.get_face_detector(face_detection_path)
 
         if facenet_path is None:
             self._facenet = None

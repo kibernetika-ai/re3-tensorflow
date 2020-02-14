@@ -19,9 +19,7 @@ class TrackedFace(object):
         self._remove_count: int = 0
         self._class_id = None
 
-    def update(
-        self, bbox: typing.List[int], detected: bool = False, prob: float = None
-    ):
+    def update(self, bbox: typing.List[int], detected: bool = False, prob: float = None):
         if self._removed:
             raise RuntimeError("trying to update removed track")
         self._bbox = bbox

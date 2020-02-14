@@ -1,17 +1,37 @@
 import abc
+import os
 
 import typing
 import numpy as np
 
 from tools import bbox
+from detector import faces_openvino
+from detector import faces_tfopencv
+
+
+def get_face_detector(face_detector_path) -> 'Detector':
+    if face_detector_path is None:
+        if os.path.isfile(faces_openvino.FACE_DETECTION_PATH):
+            face_detector_path = faces_openvino.FACE_DETECTION_PATH
+            print(
+                f"detected default openvino face detection model {face_detector_path}, using it"
+            )
+    if (
+            os.path.isfile(face_detector_path)
+            and os.path.splitext(face_detector_path)[1] == ".xml"
+    ):
+        return faces_openvino.FacesOpenvino(face_detector_path)
+    if os.path.isdir(face_detector_path) and os.path.isfile(
+            os.path.join(face_detector_path, "opencv_face_detector_uint8.pb")
+    ):
+        return faces_tfopencv.FacesTFOpenCV(face_detector_path)
+    raise RuntimeError(f"unable to identify detector for {face_detector_path}")
 
 
 class Detector(object):
-    def __init__(self,
-                threshold: float = 0.5,
-                split_counts: str = "2",
-                face_min_size: int = 10,
-    ):
+    def __init__(self, threshold: float = 0.5,
+                 split_counts: str = "2",
+                 face_min_size: int = 10):
         self._threshold = threshold
         try:
             self._split_counts: typing.List[int] = sorted(
@@ -21,9 +41,7 @@ class Detector(object):
             self._split_counts: typing.List[int] = []
         self._face_min_area = face_min_size ** 2
 
-    def detect(
-        self, bgr_frame: np.ndarray
-    ) -> (typing.List[typing.List[int]], typing.List[float]):
+    def detect(self, bgr_frame: np.ndarray) -> (typing.List[typing.List[int]], typing.List[float]):
         boxes = self._detect_faces_split(bgr_frame)
 
         if len(self._split_counts) > 0:

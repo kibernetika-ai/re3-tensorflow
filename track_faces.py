@@ -39,10 +39,10 @@ def track_faces(
     video_writer = None
     fps = None
     if source_is_file:
+        fps = src.get(cv2.CAP_PROP_FPS)
         if output is not None:
             if os.path.exists(output):
                 os.remove(output)
-            fps = src.get(cv2.CAP_PROP_FPS)
             fourcc = cv2.VideoWriter_fourcc(*"MP4V")
             width = int(src.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(src.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -137,6 +137,8 @@ def track_faces(
         print("Profiling:")
         for k in profiling:
             print(f" - {k}: {profiling[k]}")
+
+        print("report data: ", tracker.report(fps=fps))
 
 
 if __name__ == "__main__":

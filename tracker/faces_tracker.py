@@ -1,6 +1,8 @@
 import os
 
 import typing
+from datetime import datetime
+
 import numpy as np
 
 from constants import GPU_ID
@@ -14,6 +16,24 @@ from tracker import re3_tracker
 from tracker.tracked_face import TrackedFace
 
 from sklearn.neighbors import KDTree
+
+
+class FaceTrackerReportItem(object):
+    def __init__(self, start_idx, start_ts, track_id):
+        self.track_id = track_id
+        self.start_idx = start_idx
+        self.start_ts = start_ts
+        self.end_idx = None
+        self.end_ts = None
+        self.class_id = None
+
+    def update(self, idx, ts, class_id=None):
+        self.end_idx = idx
+        self.end_ts = ts
+        self.class_id = class_id
+
+    def __repr__(self):
+        return self.__dict__.__repr__()
 
 
 class FacesTracker(object):
@@ -59,14 +79,19 @@ class FacesTracker(object):
 
         self._add_range = [add_min, add_max]
 
-        self._l: typing.List[str] = []
+        self._log_msgs: typing.List[str] = []
+
+        self._report_start_ts = None
+        self._report: typing.Dict[int: FaceTrackerReportItem] = {}
 
     def track(self, frame: np.ndarray) -> typing.List[TrackedFace]:
 
         bgr_frame = frame[:, :, ::-1]
 
         self._counter += 1
-        self._l = []
+        self._log_msgs = []
+        if self._counter == 0:
+            self._report_start_ts = datetime.utcnow()
 
         self._log(f"frame {self._counter}")
 
@@ -112,6 +137,14 @@ class FacesTracker(object):
             if track is not None:
                 detected_track_ids.append(track.id)
                 self._track_add(bgr_frame, track.id, detected_bbox, is_tracked)
+
+                # store report
+                ts = datetime.utcnow() - self._report_start_ts
+                if track.id not in self._report:
+                    self._report[track.id] = FaceTrackerReportItem(
+                        self._counter, ts, track.id,
+                    )
+                self._report[track.id].update(self._counter, ts, track.class_id)
 
         # mark existing tracks as de
         for tr in self._tracked:
@@ -191,6 +224,14 @@ class FacesTracker(object):
 
         return self._tracked
 
+    def report(self, fps: float = None):
+        return [{
+            "track_id": i.track_id,
+            "start": i.start_ts.microseconds / 1000000 if fps is None else i.start_idx / fps,
+            "end": i.end_ts.microseconds / 1000000 if fps is None else i.end_idx / fps,
+            "class_id": i.class_id,
+        } for i in self._report.values()]
+
     def _track(self, bgr_frame: np.ndarray, indexes: [int]):
         if len(indexes) == 0:
             return []
@@ -228,11 +269,11 @@ class FacesTracker(object):
         return class_id
 
     def _log(self, msg: str):
-        self._l.append(msg)
+        self._log_msgs.append(msg)
 
     @property
     def log(self) -> typing.List[str]:
-        return self._l
+        return self._log_msgs
 
     @property
     def profiler(self) -> Profiler:

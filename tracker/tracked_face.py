@@ -63,7 +63,7 @@ class TrackedFace(object):
         return self._prob
 
     @property
-    def class_id(self) -> float:
+    def class_id(self) -> int:
         return self._class_id
 
     @property

@@ -106,7 +106,6 @@ class FacesTracker(object):
         detected_track_ids = []
 
         for i, detected_bbox in enumerate(detected_bboxes):
-
             detected_prob = detected_probs[i]
             is_tracked = False
             track = None
@@ -114,10 +113,7 @@ class FacesTracker(object):
             # update existing tracks with detected faces if found
             for t in self._tracked:
                 if t.id not in detected_track_ids:
-                    if (
-                        bbox.box_intersection(detected_bbox, t.bbox)
-                        > self._intersection_threshold
-                    ):
+                    if bbox.box_intersection(detected_bbox, t.bbox) > self._intersection_threshold:
                         is_tracked = True
                         t.update(detected_bbox, detected=True, prob=detected_prob)
                         track = t

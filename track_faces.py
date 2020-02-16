@@ -12,6 +12,56 @@ np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--video-source",
+        type=str,
+        default=None,
+        help="Video source (web cam if not set)",
+    )
+    parser.add_argument(
+        "--video-output", type=str, default=None, help="Video target",
+    )
+    parser.add_argument(
+        "--video-frame-freq",
+        type=int,
+        default=1,
+        help="Video processing frames frequency: process each N frame (for video file only)",
+    )
+    parser.add_argument(
+        "--video-detect-freq",
+        type=int,
+        default=10,
+        help="Faces detection frequency: detect for each N processed frame (for video file only)",
+    )
+    parser.add_argument(
+        "--log-each-frame",
+        type=int,
+        default=100,
+        help="StdOut record after each N frame",
+    )
+    parser.add_argument(
+        "--re3-checkpoint-dir",
+        type=str,
+        default="./models/re3-tracker/checkpoints",
+        help="re3 model checkpoints dir",
+    )
+    parser.add_argument(
+        "--face-detection-path",
+        type=str,
+        default=None,
+        help="face detection model path (default openvino face-detection-adas-0001)",
+    )
+    parser.add_argument(
+        "--facenet-path", type=str, default=None, help="facenet model path",
+    )
+    parser.add_argument(
+        "--screen", action="store_true", help="Show result on screen",
+    )
+    return parser.parse_args()
+
+
 def track_faces(source: str = None,
                 output: str = None,
                 each_frame: int = 1,
@@ -137,53 +187,7 @@ def track_faces(source: str = None,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--video-source",
-        type=str,
-        default=None,
-        help="Video source (web cam if not set)",
-    )
-    parser.add_argument(
-        "--video-output", type=str, default=None, help="Video target",
-    )
-    parser.add_argument(
-        "--video-frame-freq",
-        type=int,
-        default=1,
-        help="Video processing frames frequency: process each N frame (for video file only)",
-    )
-    parser.add_argument(
-        "--video-detect-freq",
-        type=int,
-        default=10,
-        help="Faces detection frequency: detect for each N processed frame (for video file only)",
-    )
-    parser.add_argument(
-        "--log-each-frame",
-        type=int,
-        default=100,
-        help="StdOut record after each N frame",
-    )
-    parser.add_argument(
-        "--re3-checkpoint-dir",
-        type=str,
-        default="./models/re3-tracker/checkpoints",
-        help="re3 model checkpoints dir",
-    )
-    parser.add_argument(
-        "--face-detection-path",
-        type=str,
-        default=None,
-        help="face detection model path (default openvino face-detection-adas-0001)",
-    )
-    parser.add_argument(
-        "--facenet-path", type=str, default=None, help="facenet model path",
-    )
-    parser.add_argument(
-        "--screen", action="store_true", help="Show result on screen",
-    )
-    args = parser.parse_args()
+    args = parse_args()
 
     re3_tracker.SPEED_OUTPUT = False
     tracker = faces_tracker.FacesTracker(

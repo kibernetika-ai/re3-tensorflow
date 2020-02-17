@@ -18,6 +18,7 @@ class TrackedFace(object):
         self._removed: bool = False
         self._remove_count: int = 0
         self._class_id = None
+        self.metadata = {}
 
     def update(self, bbox: typing.List[int], detected: bool = False, prob: float = None):
         if self._removed:

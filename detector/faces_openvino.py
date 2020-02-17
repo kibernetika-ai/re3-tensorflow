@@ -3,7 +3,7 @@ import typing
 from ml_serving.drivers import driver
 import numpy as np
 
-from detector import Detector
+from detector import detector
 
 FACE_DETECTION_PATH = (
     "/opt/intel/openvino/deployment_tools/intel_models/"
@@ -11,7 +11,7 @@ FACE_DETECTION_PATH = (
 )
 
 
-class FacesOpenvino(Detector):
+class FacesOpenvino(detector.Detector):
     def __init__(
         self,
         face_detection_path: str = FACE_DETECTION_PATH,

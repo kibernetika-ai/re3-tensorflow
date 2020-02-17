@@ -4,10 +4,10 @@ import cv2
 from ml_serving.drivers import driver
 import numpy as np
 
-from detector import Detector
+from detector import detector
 
 
-class FacesTFOpenCV(Detector):
+class FacesTFOpenCV(detector.Detector):
     def __init__(
         self,
         model_path,

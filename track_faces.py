@@ -1,12 +1,16 @@
 import argparse
+import base64
 import os
 from datetime import datetime
 
 import cv2
+import jinja2
 import numpy as np
 
+from processing import age_gender
 from tracker import faces_tracker
 from tracker import re3_tracker
+from utils import utils
 
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
@@ -16,12 +20,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--video-source",
-        type=str,
         default=None,
         help="Video source (web cam if not set)",
     )
     parser.add_argument(
-        "--video-output", type=str, default=None, help="Video target",
+        "--video-output", help="Video target",
+    )
+    parser.add_argument(
+        "--report-dir", default='report', help="Report output dir",
     )
     parser.add_argument(
         "--video-frame-freq",
@@ -43,18 +49,15 @@ def parse_args():
     )
     parser.add_argument(
         "--re3-checkpoint-dir",
-        type=str,
         default="./models/re3-tracker/checkpoints",
         help="re3 model checkpoints dir",
     )
     parser.add_argument(
         "--face-detection-path",
-        type=str,
-        default=None,
         help="face detection model path (default openvino face-detection-adas-0001)",
     )
     parser.add_argument(
-        "--facenet-path", type=str, default=None, help="facenet model path",
+        "--facenet-path", help="facenet model path",
     )
     parser.add_argument(
         "--screen", action="store_true", help="Show result on screen",
@@ -67,14 +70,19 @@ def track_faces(source: str = None,
                 each_frame: int = 1,
                 face_tracker: faces_tracker.FacesTracker = None,
                 screen: bool = True,
-                log_each_frame: int = 100):
+                log_each_frame: int = 100, **kwargs):
     if source is None:
         source_is_file = False
         source = 0
     elif os.path.isfile(source):
         source_is_file = True
+    # elif os.path.isdir(source):
+    #     source_is_file = True
     else:
         raise RuntimeError(f"source video {source} is not found")
+
+    kwargs['profiler'] = face_tracker.profiler
+    agender = age_gender.AgeGenderFilter(**kwargs)
 
     src = cv2.VideoCapture(source)
     cnt = 0
@@ -119,6 +127,10 @@ def track_faces(source: str = None,
                 img = cv2.flip(img, 1)
 
             faces = face_tracker.track(img)
+
+            # Add metadata such head-pose, age, gender etc.
+            # Add age and gender info.
+            faces = agender.filter(img, faces)
 
             img_avg = (img.shape[1] + img.shape[0]) / 2
             f_size = img_avg / 2400
@@ -178,16 +190,69 @@ def track_faces(source: str = None,
             print("Written video to %s." % output)
             video_writer.release()
 
-        profiling = tracker.profiler.get_and_reset_dict()
+        profiling = face_tracker.profiler.get_and_reset_dict()
         print("Profiling:")
         for k in profiling:
             print(f" - {k}: {profiling[k]}")
 
-        print("report data: ", tracker.report(fps=fps))
+        # print("report data: ", face_tracker.report(fps=fps))
+        intervals, class_images = face_tracker.report(fps=fps)
+
+        tpl = jinja2.Template(utils.template)
+        # Group by classes
+        by_classes = {}
+        for interval in intervals:
+            class_id = interval['class_id']
+            if class_id is None:
+                continue
+
+            if class_id in by_classes:
+                by_classes[class_id].append(interval)
+            else:
+                by_classes[class_id] = [interval]
+
+        def value_func(xy):
+            imax = 0
+            x = xy[1]
+            for i in x:
+                if i['end'] - i['start'] > imax:
+                    imax = i['end'] - i['start']
+            return imax
+
+        # Sort by duration
+        by_classes = sorted(by_classes.items(), key=value_func, reverse=True)
+
+        # Squash durations
+        report = []
+        for class_id, v in by_classes:
+            name = f'Person_{class_id}'
+            intervals = '; '.join(f'{i["start"]:.1f}-{i["end"]:.1f}' for i in v)
+            duration = max([i['end'] - i['start'] for i in v])
+            images = []
+            # __import__('ipdb').set_trace()
+            for image in class_images[class_id]:
+                encoded = cv2.imencode('.jpg', image)[1].tostring()
+                encoded = base64.standard_b64encode(encoded).decode()
+                images.append(encoded)
+
+            report.append([
+                name, None, images, intervals, duration
+            ])
+
+        # Ensure report dir
+        if not os.path.isdir(kwargs['report_dir']):
+            os.makedirs(kwargs['report_dir'])
+
+        html = tpl.render(data=report)
+        report_file = os.path.join(kwargs['report_dir'], 'top100_faces.html')
+        with open(report_file, 'w') as f:
+            f.write(html)
 
 
 if __name__ == "__main__":
     args = parse_args()
+
+    kwargs = vars(args)
 
     re3_tracker.SPEED_OUTPUT = False
     tracker = faces_tracker.FacesTracker(
@@ -201,6 +266,5 @@ if __name__ == "__main__":
         output=args.video_output,
         each_frame=args.video_frame_freq,
         face_tracker=tracker,
-        screen=args.screen,
-        log_each_frame=args.log_each_frame,
+        **kwargs,
     )

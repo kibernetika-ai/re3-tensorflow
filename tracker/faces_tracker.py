@@ -4,17 +4,18 @@ import typing
 from datetime import datetime
 
 import numpy as np
+from sklearn.neighbors import KDTree
 
 from constants import GPU_ID
 from constants import LOG_DIR
 from detector import detector
 from tools import bbox
+from tools import images
 from tools.profiler import Profiler, profiler_pipe
 from tracker import facenet
 from tracker import re3_tracker
 from tracker.tracked_face import TrackedFace
-
-from sklearn.neighbors import KDTree
+from utils import detectors
 
 
 class FaceTrackerReportItem(object):
@@ -56,7 +57,7 @@ class FacesTracker(object):
             re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
         )
 
-        self._face_detector: detector.Detector = detector.get_face_detector(face_detection_path)
+        self._face_detector: detector.Detector = detectors.get_face_detector(face_detection_path)
 
         if facenet_path is None:
             self._facenet = None
@@ -78,6 +79,7 @@ class FacesTracker(object):
 
         self._report_start_ts = None
         self._report: typing.Dict[int: FaceTrackerReportItem] = {}
+        self._class_images = {}
 
     def track(self, frame: np.ndarray) -> typing.List[TrackedFace]:
 
@@ -136,6 +138,12 @@ class FacesTracker(object):
                         self._counter, ts, track.id,
                     )
                 self._report[track.id].update(self._counter, ts, track.class_id)
+                # Add picture
+                if track.class_id in self._class_images:
+                    if len(self._class_images[track.class_id]) <= 10:
+                        self._class_images[track.class_id].append(images.crop_by_box(frame, detected_bbox))
+                else:
+                    self._class_images[track.class_id] = [images.crop_by_box(frame, detected_bbox)]
 
         # mark existing tracks as de
         for tr in self._tracked:
@@ -221,7 +229,7 @@ class FacesTracker(object):
             "start": i.start_ts.microseconds / 1000000 if fps is None else i.start_idx / fps,
             "end": i.end_ts.microseconds / 1000000 if fps is None else i.end_idx / fps,
             "class_id": i.class_id,
-        } for i in self._report.values()]
+        } for i in self._report.values()], self._class_images
 
     def _track(self, bgr_frame: np.ndarray, indexes: [int]):
         if len(indexes) == 0:

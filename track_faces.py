@@ -103,10 +103,10 @@ def track_faces(source: str = None,
             ret_val, img = src.read()
 
             if cnt % log_each_frame == 0:
-                l = f"{datetime.utcnow()}: processed {cnt} frames"
+                msg = f"{datetime.utcnow()}: processed {cnt} frames"
                 if fps is not None:
-                    l = "{}, {:.2f} sec".format(l, cnt / fps)
-                print(l)
+                    msg = f"{msg}, {cnt / fps:.2f} sec"
+                print(msg)
 
             if source_is_file and cnt % each_frame > 0:
                 continue
@@ -149,10 +149,10 @@ def track_faces(source: str = None,
                     img, lbl, crd, font, f_size, color, thickness=1,
                 )
 
-            for i, l in enumerate(tracker.log):
+            for i, msg in enumerate(tracker.log):
                 crd = (30, 50 + i * 22)
-                cv2.putText(img, l, crd, font, f_size, black, thickness=3)
-                cv2.putText(img, l, crd, font, f_size, green, thickness=1)
+                cv2.putText(img, msg, crd, font, f_size, black, thickness=3)
+                cv2.putText(img, msg, crd, font, f_size, green, thickness=1)
 
             if screen:
                 if screen_init:

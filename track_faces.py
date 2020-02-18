@@ -126,7 +126,7 @@ def track_faces(source: str = None,
             if not source_is_file:
                 img = cv2.flip(img, 1)
 
-            faces = face_tracker.track(img)
+            faces = face_tracker.track(img.copy())
 
             # Add metadata such head-pose, age, gender etc.
             # Add age and gender info.
@@ -134,51 +134,52 @@ def track_faces(source: str = None,
 
             img_avg = (img.shape[1] + img.shape[0]) / 2
             f_size = img_avg / 2400
-            for face in faces:
-                box = face.bbox
-                color = green if face.confirmed else (0, 127, 0)
-                cv2.rectangle(
-                    img,
-                    (int(box[0]), int(box[1])),
-                    (int(box[2]), int(box[3])),
-                    color,
-                    2 if face.just_detected else 1,
-                )
-                lbl = f"Track {face.id}" if face.confirmed else "---"
-                if face.class_id:
-                    lbl = f"{lbl}, class {face.class_id}"
-                if face.prob:
-                    lbl = "{}, prb {:.2f}".format(lbl, face.prob)
-                if face.confirm_count > 0:
-                    lbl = f"{lbl}, cf {face.confirm_count}"
-                if face.to_remove:
-                    lbl = f"{lbl}, rm {face.remove_count}"
-                crd = (int(box[0]), int(box[1] - img_avg / 100))
-                cv2.putText(
-                    img, lbl, crd, font, f_size, black, thickness=3,
-                )
-                cv2.putText(
-                    img, lbl, crd, font, f_size, color, thickness=1,
-                )
+            if screen or video_writer is not None:
+                for face in faces:
+                    box = face.bbox
+                    color = green if face.confirmed else (0, 127, 0)
+                    cv2.rectangle(
+                        img,
+                        (int(box[0]), int(box[1])),
+                        (int(box[2]), int(box[3])),
+                        color,
+                        2 if face.just_detected else 1,
+                    )
+                    lbl = f"Track {face.id}" if face.confirmed else "---"
+                    if face.class_id:
+                        lbl = f"{lbl}, class {face.class_id}"
+                    if face.prob:
+                        lbl = "{}, prb {:.2f}".format(lbl, face.prob)
+                    if face.confirm_count > 0:
+                        lbl = f"{lbl}, cf {face.confirm_count}"
+                    if face.to_remove:
+                        lbl = f"{lbl}, rm {face.remove_count}"
+                    crd = (int(box[0]), int(box[1] - img_avg / 100))
+                    cv2.putText(
+                        img, lbl, crd, font, f_size, black, thickness=3,
+                    )
+                    cv2.putText(
+                        img, lbl, crd, font, f_size, color, thickness=1,
+                    )
 
-            for i, msg in enumerate(tracker.log):
-                crd = (30, 50 + i * 22)
-                cv2.putText(img, msg, crd, font, f_size, black, thickness=3)
-                cv2.putText(img, msg, crd, font, f_size, green, thickness=1)
+                for i, msg in enumerate(tracker.log):
+                    crd = (30, 50 + i * 22)
+                    cv2.putText(img, msg, crd, font, f_size, black, thickness=3)
+                    cv2.putText(img, msg, crd, font, f_size, green, thickness=1)
 
-            if screen:
-                if screen_init:
-                    cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
-                    cv2.resizeWindow("Output", int(img.shape[1] / 2), int(img.shape[0] / 2))
-                    screen_init = False
-                cv2.imshow("Output", img)
+                if screen:
+                    if screen_init:
+                        cv2.namedWindow("Output", cv2.WINDOW_NORMAL)
+                        cv2.resizeWindow("Output", int(img.shape[1] / 2), int(img.shape[0] / 2))
+                        screen_init = False
+                    cv2.imshow("Output", img)
 
-            if video_writer is not None:
-                video_writer.write(img)
+                if video_writer is not None:
+                    video_writer.write(img)
 
-            key_pressed = cv2.waitKey(1)
-            if key_pressed == 27 or key_pressed == 1048603:
-                break  # esc to quit
+                key_pressed = cv2.waitKey(1)
+                if key_pressed == 27 or key_pressed == 1048603:
+                    break  # esc to quit
 
     except (KeyboardInterrupt, SystemExit) as e:
         print("Caught %s: %s" % (e.__class__.__name__, e))

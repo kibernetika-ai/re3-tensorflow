@@ -71,7 +71,7 @@ class Re3Tracker(object):
         if type(image) == str:
             image = cv2.imread(image)[:, :, ::-1]
         else:
-            image = image.copy()
+            image = image
 
         image_read_time = time.time() - start_time
 

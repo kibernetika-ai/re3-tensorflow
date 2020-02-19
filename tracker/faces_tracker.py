@@ -48,25 +48,8 @@ class FacesTracker(object):
                  add_max=0.5,
                  profiler: Profiler = None):
 
-        self._profiler: Profiler = profiler_pipe(profiler)
-
-        # intersection coef for identifying tracked and detected faces
-        self._intersection_threshold: float = intersection_threshold
-
-        self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
-            re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
-        )
-
-        self._face_detector: detector.Detector = detectors.get_face_detector(face_detection_path)
-
-        if facenet_path is None:
-            self._facenet = None
-        else:
-            self._facenet = facenet.Facenet(facenet_path, self._profiler)
-
         self._detect_each: int = detect_each
         self._counter: int = -1
-
         self._tracked: typing.List[TrackedFace] = []
 
         self._kd_tree = None
@@ -74,12 +57,23 @@ class FacesTracker(object):
         self._kd_classes = []
 
         self._add_range = [add_min, add_max]
-
+        # intersection coef for identifying tracked and detected faces
+        self._intersection_threshold: float = intersection_threshold
         self._log_msgs: typing.List[str] = []
-
         self._report_start_ts = None
         self._report: typing.Dict[int: FaceTrackerReportItem] = {}
         self._class_images = {}
+        self._profiler: Profiler = profiler_pipe(profiler)
+
+        self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
+            re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
+        )
+        self._face_detector: detector.Detector = detectors.get_face_detector(face_detection_path)
+
+        if facenet_path is None:
+            self._facenet = None
+        else:
+            self._facenet = facenet.Facenet(facenet_path, self._profiler)
 
     def track(self, frame: np.ndarray) -> typing.List[TrackedFace]:
 
@@ -93,7 +87,7 @@ class FacesTracker(object):
         self._log(f"frame {self._counter}")
 
         # existing tracks
-        tracked_faces = self._track(bgr_frame, [t.id for t in self._tracked])
+        tracked_faces = self._track(frame, [t.id for t in self._tracked])
 
         if self._counter % self._detect_each > 0:
             for i, t in enumerate(tracked_faces):
@@ -140,7 +134,7 @@ class FacesTracker(object):
                 self._report[track.id].update(self._counter, ts, track.class_id)
                 # Add picture
                 if track.class_id in self._class_images:
-                    if len(self._class_images[track.class_id]) <= 10:
+                    if len(self._class_images[track.class_id]) < 10:
                         self._class_images[track.class_id].append(images.crop_by_box(frame, detected_bbox))
                 else:
                     self._class_images[track.class_id] = [images.crop_by_box(frame, detected_bbox)]
@@ -231,24 +225,24 @@ class FacesTracker(object):
             "class_id": i.class_id,
         } for i in self._report.values()], self._class_images
 
-    def _track(self, bgr_frame: np.ndarray, indexes: [int]):
+    def _track(self, frame: np.ndarray, indexes: [int]):
         if len(indexes) == 0:
             return []
         self._profiler.add('re3 tracks', len(indexes))
         prf = "re3 tracking"
         self._profiler.start(prf)
         if len(indexes) == 1:
-            tracks = [self._re3_tracker.track(f"{indexes[0]}", bgr_frame)]
+            tracks = [self._re3_tracker.track(f"{indexes[0]}", frame)]
         else:
-            tracks = self._re3_tracker.multi_track([f"{i}" for i in indexes], bgr_frame)
+            tracks = self._re3_tracker.multi_track([f"{i}" for i in indexes], frame)
         self._profiler.stop(prf)
         return tracks
 
-    def _track_add(self, bgr_frame: np.ndarray, index: int, bbox: [int], is_tracked: bool):
+    def _track_add(self, frame: np.ndarray, index: int, bbox: [int], is_tracked: bool):
         self._profiler.add('re3 tracks {}'.format('updated' if is_tracked else 'added'), 1)
         prf = "re3 track {}".format('updating' if is_tracked else 'adding')
         self._profiler.start(prf)
-        self._re3_tracker.track(f"{index}", bgr_frame, bbox)
+        self._re3_tracker.track(f"{index}", frame, bbox)
         self._profiler.stop(prf)
 
     def _kd_init(self, embs: np.ndarray) -> typing.List:

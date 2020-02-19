@@ -123,7 +123,7 @@ class FacesTracker(object):
             # apply existing or new track updating
             if track is not None:
                 detected_track_ids.append(track.id)
-                self._track_add(bgr_frame, track.id, detected_bbox, is_tracked)
+                self._track_add(frame, track.id, detected_bbox, is_tracked)
 
                 # store report
                 ts = datetime.utcnow() - self._report_start_ts

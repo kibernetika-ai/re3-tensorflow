@@ -232,7 +232,7 @@ def track_faces(source: str = None,
             images = []
             # __import__('ipdb').set_trace()
             for image in class_images[class_id]:
-                encoded = cv2.imencode('.jpg', image)[1].tostring()
+                encoded = cv2.imencode('.jpg', image[:, :, ::-1])[1].tostring()
                 encoded = base64.standard_b64encode(encoded).decode()
                 images.append(encoded)
 

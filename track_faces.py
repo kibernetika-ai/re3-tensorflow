@@ -249,6 +249,8 @@ def track_faces(source: str = None,
         with open(report_file, 'w') as f:
             f.write(html)
 
+        print(f'Report is saved to {report_file}')
+
 
 if __name__ == "__main__":
     args = parse_args()

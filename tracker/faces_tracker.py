@@ -75,9 +75,9 @@ class FacesTracker(object):
         else:
             self._facenet = facenet.Facenet(facenet_path, self._profiler)
 
-    def track(self, frame: np.ndarray) -> typing.List[TrackedFace]:
+    def track(self, bgr_frame: np.ndarray) -> typing.List[TrackedFace]:
 
-        bgr_frame = frame[:, :, ::-1]
+        frame = bgr_frame[:, :, ::-1]
 
         self._counter += 1
         self._log_msgs = []

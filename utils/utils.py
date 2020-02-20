@@ -82,3 +82,11 @@ def get_driver(model_path: str, description: str = None, driver_name: str = None
     d = drv()
     d.load_model(model_path, **kwargs)
     return d
+
+
+def configure_logging():
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)-5s %(name)-10s [-] %(message)s',
+        level='INFO'
+    )
+    logging.root.setLevel(logging.INFO)

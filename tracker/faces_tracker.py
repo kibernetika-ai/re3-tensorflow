@@ -1,7 +1,7 @@
-import os
-
-import typing
+import dataclasses
 from datetime import datetime
+import os
+import typing
 
 import numpy as np
 from sklearn.neighbors import KDTree
@@ -9,6 +9,7 @@ from sklearn.neighbors import KDTree
 from constants import GPU_ID
 from constants import LOG_DIR
 from detector import detector
+from processing import age_gender
 from tools import bbox
 from tools import images
 from tools.profiler import Profiler, profiler_pipe
@@ -18,14 +19,16 @@ from tracker.tracked_face import TrackedFace
 from utils import detectors
 
 
+@dataclasses.dataclass
 class FaceTrackerReportItem(object):
-    def __init__(self, start_idx, start_ts, track_id):
+    def __init__(self, start_idx, start_ts, track_id, metadata=None):
         self.track_id = track_id
         self.start_idx = start_idx
         self.start_ts = start_ts
         self.end_idx = None
         self.end_ts = None
         self.class_id = None
+        self.metadata = metadata
 
     def update(self, idx, ts, class_id=None):
         self.end_idx = idx
@@ -46,7 +49,8 @@ class FacesTracker(object):
                  gpu_id=GPU_ID,
                  add_min=0.3,
                  add_max=0.5,
-                 profiler: Profiler = None):
+                 profiler: Profiler = None,
+                 **kwargs):
 
         self._detect_each: int = detect_each
         self._counter: int = -1
@@ -64,6 +68,9 @@ class FacesTracker(object):
         self._report: typing.Dict[int: FaceTrackerReportItem] = {}
         self._class_images = {}
         self._profiler: Profiler = profiler_pipe(profiler)
+
+        kwargs['profiler'] = self._profiler
+        self.agender = age_gender.AgeGenderFilter(**kwargs)
 
         self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
             re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
@@ -126,10 +133,14 @@ class FacesTracker(object):
                 self._track_add(frame, track.id, detected_bbox, is_tracked)
 
                 # store report
+                # Add metadata such head-pose, age, gender etc.
+                # Add age and gender info.
+                track = self.agender.filter(frame, [track])[0]
+
                 ts = datetime.utcnow() - self._report_start_ts
                 if track.id not in self._report:
                     self._report[track.id] = FaceTrackerReportItem(
-                        self._counter, ts, track.id,
+                        self._counter, ts, track.id, metadata=track.metadata
                     )
                 self._report[track.id].update(self._counter, ts, track.class_id)
                 # Add picture
@@ -223,6 +234,7 @@ class FacesTracker(object):
             "start": i.start_ts.microseconds / 1000000 if fps is None else i.start_idx / fps,
             "end": i.end_ts.microseconds / 1000000 if fps is None else i.end_idx / fps,
             "class_id": i.class_id,
+            "metadata": i.metadata,
         } for i in self._report.values()], self._class_images
 
     def _track(self, frame: np.ndarray, indexes: [int]):

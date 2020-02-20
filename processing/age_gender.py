@@ -26,7 +26,7 @@ class AgeGenderFilter(object):
     def __init__(self, **kwargs):
         # Do not filter, just save filter data.
         self._type = 'age gender'
-        self._profiler = kwargs.get('profiler', profiler.Profiler)
+        self._profiler = kwargs.get('profiler', profiler.Profiler())
         self.filter_keep = True
         model_path = kwargs.get('age_model_path')
         self.single_driver = not bool(model_path)
@@ -206,5 +206,5 @@ class AgeGenderFilter(object):
 
 
 def set_age_gender(to: tracked_face.TrackedFace, age_gender_data: tuple):
-    to.metadata['age'] = age_gender_data[0]
+    to.metadata['age'] = round(age_gender_data[0])
     to.metadata['gender'] = age_gender_data[1]

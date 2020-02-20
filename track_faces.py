@@ -57,6 +57,10 @@ def parse_args():
         help="face detection model path (default openvino face-detection-adas-0001)",
     )
     parser.add_argument(
+        "--age_model_path",
+        help="path to the age model (default openvino age-gender-estimation",
+    )
+    parser.add_argument(
         "--facenet-path", help="facenet model path",
     )
     parser.add_argument(
@@ -80,9 +84,6 @@ def track_faces(source: str = None,
     #     source_is_file = True
     else:
         raise RuntimeError(f"source video {source} is not found")
-
-    kwargs['profiler'] = face_tracker.profiler
-    agender = age_gender.AgeGenderFilter(**kwargs)
 
     src = cv2.VideoCapture(source)
     cnt = 0
@@ -127,10 +128,6 @@ def track_faces(source: str = None,
                 img = cv2.flip(img, 1)
 
             faces = face_tracker.track(img.copy())
-
-            # Add metadata such head-pose, age, gender etc.
-            # Add age and gender info.
-            faces = agender.filter(img, faces)
 
             img_avg = (img.shape[1] + img.shape[0]) / 2
             f_size = img_avg / 2400
@@ -225,12 +222,19 @@ def track_faces(source: str = None,
 
         # Squash durations
         report = []
+        __import__('ipdb').set_trace()
         for class_id, v in by_classes:
+            age_average = int(round(np.average([i['metadata']['age'] for i in v])))
+            gender_average = np.average([i['metadata']['gender'] for i in v])
+            gender = 'male' if gender_average >= 0.5 else 'female'
+
             name = f'Person_{class_id}'
+            name = f'{name}; age={age_average}'
+            name = f'{name}; gender={gender}'
+
             intervals = '; '.join(f'{i["start"]:.1f}-{i["end"]:.1f}' for i in v)
             duration = max([i['end'] - i['start'] for i in v])
             images = []
-            # __import__('ipdb').set_trace()
             for image in class_images[class_id]:
                 encoded = cv2.imencode('.jpg', image[:, :, ::-1])[1].tostring()
                 encoded = base64.standard_b64encode(encoded).decode()
@@ -257,12 +261,12 @@ if __name__ == "__main__":
 
     kwargs = vars(args)
 
+    utils.configure_logging()
+
     re3_tracker.SPEED_OUTPUT = False
     tracker = faces_tracker.FacesTracker(
-        re3_checkpoint_dir=args.re3_checkpoint_dir,
-        face_detection_path=args.face_detection_path,
-        facenet_path=args.facenet_path,
         detect_each=args.video_detect_freq,
+        **kwargs
     )
     track_faces(
         source=args.video_source,

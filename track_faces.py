@@ -1,5 +1,6 @@
 import argparse
 import base64
+import json
 import os
 from datetime import datetime
 
@@ -7,7 +8,7 @@ import cv2
 import jinja2
 import numpy as np
 
-from processing import age_gender
+from report import db
 from tracker import faces_tracker
 from tracker import re3_tracker
 from utils import utils
@@ -27,7 +28,7 @@ def parse_args():
         "--video-output", help="Video target",
     )
     parser.add_argument(
-        "--report-dir", default='report', help="Report output dir",
+        "--report-dir", default='reports', help="Report output dir",
     )
     parser.add_argument(
         "--video-frame-freq",
@@ -194,66 +195,95 @@ def track_faces(source: str = None,
             print(f" - {k}: {profiling[k]}")
 
         # print("report data: ", face_tracker.report(fps=fps))
-        intervals, class_images = face_tracker.report(fps=fps)
 
-        tpl = jinja2.Template(utils.template)
-        # Group by classes
-        by_classes = {}
-        for interval in intervals:
-            class_id = interval['class_id']
-            if class_id is None:
-                continue
+        save_report(kwargs['report_dir'], face_tracker, fps=fps)
 
-            if class_id in by_classes:
-                by_classes[class_id].append(interval)
-            else:
-                by_classes[class_id] = [interval]
 
-        def value_func(xy):
-            imax = 0
-            x = xy[1]
-            for i in x:
-                if i['end'] - i['start'] > imax:
-                    imax = i['end'] - i['start']
-            return imax
+def save_report(report_dir, face_tracker, fps=30):
+    intervals, class_images = face_tracker.report(fps=fps)
 
-        # Sort by duration
-        by_classes = sorted(by_classes.items(), key=value_func, reverse=True)
+    tpl = jinja2.Template(utils.template)
+    # Group by classes
+    by_classes = {}
+    for interval in intervals:
+        class_id = interval['class_id']
+        if class_id is None:
+            continue
 
-        # Squash durations
-        report = []
-        __import__('ipdb').set_trace()
-        for class_id, v in by_classes:
-            age_average = int(round(np.average([i['metadata']['age'] for i in v])))
-            gender_average = np.average([i['metadata']['gender'] for i in v])
-            gender = 'male' if gender_average >= 0.5 else 'female'
+        if class_id in by_classes:
+            by_classes[class_id].append(interval)
+        else:
+            by_classes[class_id] = [interval]
 
-            name = f'Person_{class_id}'
-            name = f'{name}; age={age_average}'
-            name = f'{name}; gender={gender}'
+    def value_func(xy):
+        imax = 0
+        x = xy[1]
+        for i in x:
+            if i['end'] - i['start'] > imax:
+                imax = i['end'] - i['start']
+        return imax
 
-            intervals = '; '.join(f'{i["start"]:.1f}-{i["end"]:.1f}' for i in v)
-            duration = max([i['end'] - i['start'] for i in v])
-            images = []
-            for image in class_images[class_id]:
-                encoded = cv2.imencode('.jpg', image[:, :, ::-1])[1].tostring()
-                encoded = base64.standard_b64encode(encoded).decode()
-                images.append(encoded)
+    # Sort by duration
+    by_classes = sorted(by_classes.items(), key=value_func, reverse=True)
 
-            report.append([
-                name, None, images, intervals, duration
-            ])
+    # Ensure report dir
+    if not os.path.isdir(report_dir):
+        os.makedirs(report_dir)
 
-        # Ensure report dir
-        if not os.path.isdir(kwargs['report_dir']):
-            os.makedirs(kwargs['report_dir'])
+    db_api = db.ReportDB(os.path.join(report_dir, 'report.db'), clear_report=True)
+    db_api.begin_transaction()
 
-        html = tpl.render(data=report)
-        report_file = os.path.join(kwargs['report_dir'], 'top100_faces.html')
-        with open(report_file, 'w') as f:
-            f.write(html)
+    report = []
+    for class_id, v in by_classes:
+        age_average = int(round(np.average([i['metadata']['age'] for i in v])))
+        gender_average = np.average([i['metadata']['gender'] for i in v])
+        gender = 'male' if gender_average >= 0.5 else 'female'
 
-        print(f'Report is saved to {report_file}')
+        name = f'Person_{class_id}'
+
+        # Insert into DB
+        db_data = {
+            'id': str(class_id),
+            'name': name,  # just person for now
+            'meta': json.dumps({'age': age_average, 'gender': gender}),
+            'age': age_average,
+            'gender': gender,
+        }
+        db_api.insert_data('classes', db_data, commit=False)
+
+        name = f'{name}; age={age_average}'
+        name = f'{name}; gender={gender}'
+
+        for interval in v:
+            db_data = {
+                'class_id': str(class_id),
+                'start': interval['start'],
+                'end': interval['end']
+            }
+            db_api.insert_data('intervals', db_data, commit=False)
+
+        # TODO: insert attention intervals
+
+        intervals = '; '.join(f'{i["start"]:.1f}-{i["end"]:.1f}' for i in v)
+        duration = max([i['end'] - i['start'] for i in v])
+        images = []
+        for image in class_images[class_id]:
+            encoded = cv2.imencode('.jpg', image[:, :, ::-1])[1].tostring()
+            encoded = base64.standard_b64encode(encoded).decode()
+            images.append(encoded)
+
+        report.append([
+            name, None, images, intervals, duration
+        ])
+
+    db_api.end_transaction()
+
+    html = tpl.render(data=report)
+    report_file = os.path.join(report_dir, 'top100_faces.html')
+    with open(report_file, 'w') as f:
+        f.write(html)
+
+    print(f'Report is saved to {report_file}')
 
 
 if __name__ == "__main__":

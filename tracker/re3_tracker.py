@@ -116,7 +116,7 @@ class Re3Tracker(object):
             newlstmState = [s1[0], s1[1], s2[0], s2[1]]
         self._profiler.stop(self._re3_sess_p2_profiler)
 
-        return rawOutput,conv_layers2, newlstmState
+        return rawOutput, newlstmState
 
     def _run_sess0(self, croppedInput0, croppedInput1, lstmState):
         feed_dict = {

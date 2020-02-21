@@ -103,7 +103,7 @@ class Re3Tracker(object):
         if forwardCount == 0:
             originalFeatures = [s1[0], s1[1], s2[0], s2[1]]
 
-        prevImage = image
+        # prevImage = image
 
         # Shift output box to full image coordinate system.
         outputBox = bb_util.from_crop_coordinate_system(rawOutput.squeeze() / 10.0, pastBBoxPadded, 1, 1)
@@ -165,8 +165,8 @@ class Re3Tracker(object):
         for unique_id in unique_ids:
             if unique_id in starting_boxes:
                 lstmState = [np.zeros((1, LSTM_SIZE)) for _ in range(4)]
-                pastBBox = np.array(
-                    starting_boxes[unique_id])  # turns list into numpy array if not and copies for safety.
+                # turns list into numpy array if not and copies for safety.
+                pastBBox = np.array(starting_boxes[unique_id])
                 prevImage = image
                 originalFeatures = None
                 forwardCount = 0
@@ -204,7 +204,7 @@ class Re3Tracker(object):
             if forwardCount == 0:
                 originalFeatures = [s1[0][[uu], :], s1[1][[uu], :], s2[0][[uu], :], s2[1][[uu], :]]
 
-            prevImage = image
+            # prevImage = image
 
             # Shift output box to full image coordinate system.
             pastBBoxPadded = pastBBoxesPadded[uu]

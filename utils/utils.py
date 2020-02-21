@@ -69,7 +69,7 @@ def get_driver(model_path: str, description: str = None, driver_name: str = None
         # detect tensorflow or openvino model
         if os.path.isdir(model_path) and os.path.isfile(os.path.join(model_path, 'saved_model.pb')):
             driver_name = 'tensorflow'
-        elif model_path.endswith('.pth'):
+        elif model_path.endswith('.pth') or model_path.endswith('.pkl'):
             # pytorch
             driver_name = 'pytorch'
         else:

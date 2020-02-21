@@ -62,6 +62,10 @@ def parse_args():
         help="path to the age model (default openvino age-gender-estimation",
     )
     parser.add_argument(
+        "--head_pose_model_path",
+        help="path to the head-pose model (default openvino head-pose-estimation",
+    )
+    parser.add_argument(
         "--facenet-path", help="facenet model path",
     )
     parser.add_argument(

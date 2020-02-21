@@ -10,6 +10,7 @@ from constants import GPU_ID
 from constants import LOG_DIR
 from detector import detector
 from processing import age_gender
+from processing import headpose
 from tools import bbox
 from tools import images
 from tools.profiler import Profiler, profiler_pipe
@@ -71,6 +72,7 @@ class FacesTracker(object):
 
         kwargs['profiler'] = self._profiler
         self.agender = age_gender.AgeGenderFilter(**kwargs)
+        self.head_pose = headpose.HeadPoseFilter(**kwargs)
 
         self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
             re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
@@ -136,6 +138,7 @@ class FacesTracker(object):
                 # Add metadata such head-pose, age, gender etc.
                 # Add age and gender info.
                 track = self.agender.filter(frame, [track])[0]
+                track = self.head_pose.filter(frame, [track])[0]
 
                 ts = datetime.utcnow() - self._report_start_ts
                 if track.id not in self._report:

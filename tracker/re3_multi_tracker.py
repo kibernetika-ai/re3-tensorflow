@@ -108,7 +108,7 @@ class Re3Tracker(object):
         if forwardCount == 0:
             originalFeatures = [s1[0], s1[1], s2[0], s2[1]]
 
-        prevImage = image
+        # prevImage = image
 
         # Shift output box to full image coordinate system.
         outputBox = bb_util.from_crop_coordinate_system(rawOutput.squeeze() / 10.0, pastBBoxPadded, 1, 1)
@@ -131,9 +131,9 @@ class Re3Tracker(object):
             # Use label if it's given
             outputBox = np.array(starting_box)
 
-        self.lock.acquire()
+        # self.lock.acquire()
         self.tracked_data[unique_id] = (lstmState, outputBox, image, originalFeatures, forwardCount)
-        self.lock.release()
+        # self.lock.release()
 
         end_time = time.time()
         if self.total_forward_count > 0:
@@ -174,9 +174,9 @@ class Re3Tracker(object):
                 prevImage = image
                 originalFeatures = None
                 forwardCount = 0
-                self.lock.acquire()
+                # self.lock.acquire()
                 self.tracked_data[unique_id] = (lstmState, pastBBox, image, originalFeatures, forwardCount)
-                self.lock.release()
+                # self.lock.release()
             elif unique_id in self.tracked_data:
                 lstmState, pastBBox, prevImage, originalFeatures, forwardCount = self.tracked_data[unique_id]
             else:
@@ -231,9 +231,9 @@ class Re3Tracker(object):
                 outputBox = np.array(starting_boxes[unique_id])
 
             outputBoxes[uu, :] = outputBox
-            self.lock.acquire()
+            # self.lock.acquire()
             self.tracked_data[unique_id] = (lstmState, outputBox, image, originalFeatures, forwardCount)
-            self.lock.release()
+            # self.lock.release()
         end_time = time.time()
         if self.total_forward_count > 0:
             self.time += (end_time - start_time - image_read_time)

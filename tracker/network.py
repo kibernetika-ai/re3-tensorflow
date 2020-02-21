@@ -323,35 +323,31 @@ def alexnet_conv_layers_single_old(input, batch_size, num_unrolls,reuse=False):
 
         return reshaped
 
-def inference_conf(isFirst,inputs,num_unrolls, batch_size=None,reuse=None):
+def inference_conf(inputs0,inputs1,num_unrolls, batch_size=None):
     if batch_size is None:
-        batch_size = int(inputs.get_shape().as_list()[0] / (num_unrolls))
-    with tf.variable_scope('re3', reuse=reuse):
-        conv_layers = alexnet_conv_layers_single(inputs, batch_size, num_unrolls)
+        batch_size = int(inputs1.get_shape().as_list()[0] / (num_unrolls))
+    with tf.variable_scope('re3'):
+        conv_layers0 = alexnet_conv_layers_single(inputs0, batch_size, num_unrolls)
+    with tf.variable_scope('re3', reuse=True):
+        conv_layers1 = alexnet_conv_layers_single(inputs1, batch_size, num_unrolls)
+    with tf.variable_scope('re3'):
         with tf.variable_scope('fc6'):
-            w1,w2,b = tf_util.fc_layer_def(conv_layers, 1024)
-            if isFirst:
-                fc_out = tf.matmul(conv_layers, w1)
-            else:
-                fc_out = tf.matmul(conv_layers, w2)
-    return fc_out,b
+            conv_layers = tf.concat([conv_layers0,conv_layers1],axis=1)
+            fc_out = tf_util.fc_layer(conv_layers, 1024)
+    return fc_out
 
 
 
-def inference_single(conv_layers1,conv_layers2,bias, num_unrolls, train, batch_size=None, prevLstmState=None, reuse=None):
+def inference_single(fc6_out, num_unrolls, train, batch_size=None, prevLstmState=None, reuse=None):
     # Data should be in order BxTx2xHxWxC where T is the number of unrolls
     # Mean subtraction
     if batch_size is None:
-        batch_size = int(conv_layers1.get_shape().as_list()[0] / (num_unrolls))
+        batch_size = int(fc6_out.get_shape().as_list()[0] / (num_unrolls))
 
     print(f'num_unrolls={num_unrolls}')
     with tf.variable_scope('re3', reuse=reuse):
         # Embed Fully Connected Layer
         with tf.variable_scope('fc6'):
-            fc6_out = conv_layers1+conv_layers2+bias
-            fc6_out = tf.nn.relu(fc6_out)
-            print(f'fc6_out={fc6_out.shape}')
-            # (BxT)xC
             fc6_reshape = tf.reshape(fc6_out, tf.stack([batch_size, num_unrolls, fc6_out.get_shape().as_list()[-1]]))
             print(f'fc6_reshape={fc6_reshape.shape}')
 

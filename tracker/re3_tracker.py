@@ -64,48 +64,30 @@ class Re3Tracker(object):
     def _init_tf(self):
         self.imagePlaceholder1 = tf.placeholder(tf.uint8, shape=(None, CROP_SIZE, CROP_SIZE, 3))
         self.imagePlaceholder2 = tf.placeholder(tf.uint8, shape=(None, CROP_SIZE, CROP_SIZE, 3))
-        self.conv_layers1 = tf.placeholder(tf.float32, shape=(None, 1024))
-        #37104
-        self.conv_layers2 = tf.placeholder(tf.float32, shape=(None, 1024))
+        self.fc = tf.placeholder(tf.float32, shape=(None, 1024))
         self.prevLstmState = tuple([tf.placeholder(tf.float32, shape=(None, LSTM_SIZE)) for _ in range(4)])
         self.batch_size = tf.placeholder(tf.int32, shape=())
-        self.conv_layers1_out,b = network.inference_conf(True,self.imagePlaceholder1, num_unrolls=1,
+        self.fc_out= network.inference_conf(self.imagePlaceholder1,self.imagePlaceholder2, num_unrolls=1,
                                                        batch_size=self.batch_size)
-        self.conv_layers2_out,_ = network.inference_conf(False,self.imagePlaceholder2, num_unrolls=1,
-                                                       batch_size=self.batch_size, reuse=True)
         self.outputs, self.state1, self.state2 = network.inference_single(
-            self.conv_layers1, self.conv_layers2,b, num_unrolls=1, batch_size=self.batch_size, train=False,
+            self.fc, num_unrolls=1, batch_size=self.batch_size, train=False,
             prevLstmState=self.prevLstmState)
 
-    def _init_tf_0(self):
-        self.imagePlaceholder = tf.placeholder(tf.uint8, shape=(None, CROP_SIZE, CROP_SIZE, 3))
-        self.prevLstmState = tuple([tf.placeholder(tf.float32, shape=(None, LSTM_SIZE)) for _ in range(4)])
-        self.batch_size = tf.placeholder(tf.int32, shape=())
-        self.outputs, self.state1, self.state2 = network.inference(self.imagePlaceholder,
-                                                                   num_unrolls=1, batch_size=self.batch_size,
-                                                                   train=False,
-                                                                   prevLstmState=self.prevLstmState)
 
     def _run_sess(self, croppedInput0, croppedInput1, lstmState, mult=0):
         feed_dict_0 = {
-            self.imagePlaceholder1: croppedInput0,
-            self.batch_size: len(croppedInput0),
+            self.imagePlaceholder1: [croppedInput0],
+            self.imagePlaceholder2: [croppedInput1],
+            self.batch_size: 1,
         }
         self._profiler.start(self._re3_sess_p1_profiler)
-        conv_layers1 = self.sess.run([self.conv_layers1_out], feed_dict=feed_dict_0)
-        self._profiler.stop(self._re3_sess_p1_profiler)
-        feed_dict_0 = {
-            self.imagePlaceholder2: croppedInput1,
-            self.batch_size: len(croppedInput1),
-        }
-        self._profiler.start(self._re3_sess_p1_profiler)
-        conv_layers2 = self.sess.run([self.conv_layers2_out], feed_dict=feed_dict_0)
+        fc_out = self.sess.run([self.fc_out], feed_dict=feed_dict_0)
+        fc_out = fc_out[0]
         self._profiler.stop(self._re3_sess_p1_profiler)
         feed_dict_1 = {
-            self.conv_layers1: conv_layers1[0],
-            self.conv_layers2: conv_layers2[0],
+            self.fc: fc_out,
             self.prevLstmState: lstmState,
-            self.batch_size: len(croppedInput0),
+            self.batch_size: 1,
         }
         self._profiler.start(self._re3_sess_p2_profiler)
         rawOutput, s1, s2 = self.sess.run([self.outputs, self.state1, self.state2], feed_dict=feed_dict_1)
@@ -116,20 +98,9 @@ class Re3Tracker(object):
         else:
             newlstmState = [s1[0], s1[1], s2[0], s2[1]]
         self._profiler.stop(self._re3_sess_p2_profiler)
+        return rawOutput,newlstmState
 
-        return rawOutput, newlstmState
 
-    def _run_sess0(self, croppedInput0, croppedInput1, lstmState):
-        feed_dict = {
-            self.imagePlaceholder: [croppedInput0, croppedInput1],
-            self.prevLstmState: lstmState,
-            self.batch_size: 1,
-        }
-        self._profiler.start(self._re3_sess_profiler)
-        rawOutput, s1, s2 = self.sess.run([self.outputs, self.state1, self.state2], feed_dict=feed_dict)
-        lstmState = [s1[0], s1[1], s2[0], s2[1]]
-        self._profiler.stop(self._re3_sess_profiler)
-        return rawOutput, lstmState
 
     # unique_id{str}: A unique id for the object being tracked.
     # image{str or numpy array}: The current image or the path to the current image.
@@ -147,20 +118,20 @@ class Re3Tracker(object):
         if starting_box is not None:
             lstmState = [np.zeros((1, LSTM_SIZE)) for _ in range(4)]
             pastBBox = np.array(starting_box)  # turns list into numpy array if not and copies for safety.
-            prevImage = image
-            originalFeatures = None
             forwardCount = 0
+            prev = image
         elif unique_id in self.tracked_data:
-            lstmState, pastBBox, prevImage, originalFeatures, forwardCount = self.tracked_data[unique_id]
+            lstmState, pastBBox, prev, originalFeatures, forwardCount = self.tracked_data[unique_id]
         else:
             raise Exception('Unique_id %s with no initial bounding box' % unique_id)
-
         self._profiler.start(self._re3_crop_profiler)
-        croppedInput0, pastBBoxPadded = im_util.get_cropped_input(prevImage, pastBBox, CROP_PAD, CROP_SIZE)
+        croppedInput0, pastBBoxPadded = im_util.get_cropped_input(prev, pastBBox, CROP_PAD, CROP_SIZE)
+        self._profiler.stop(self._re3_crop_profiler)
+        self._profiler.start(self._re3_crop_profiler)
         croppedInput1, _ = im_util.get_cropped_input(image, pastBBox, CROP_PAD, CROP_SIZE)
         self._profiler.stop(self._re3_crop_profiler)
 
-        rawOutput, lstmState = self._run_sess([croppedInput0], [croppedInput1], [lstmState])
+        rawOutput,lstmState = self._run_sess(croppedInput0, croppedInput1, [lstmState])
         #if forwardCount == 0:
         originalFeatures = lstmState
 
@@ -175,7 +146,7 @@ class Re3Tracker(object):
             # Use label if it's given
             outputBox = np.array(starting_box)
 
-        self.tracked_data[unique_id] = (lstmState, outputBox, image, originalFeatures, forwardCount)
+        self.tracked_data[unique_id] = (lstmState, outputBox,image, originalFeatures, forwardCount)
         end_time = time.time()
         if self.total_forward_count > 0:
             self.time += (end_time - start_time - image_read_time)
@@ -190,6 +161,16 @@ class Re3Tracker(object):
     # starting_boxes{None or dictionary of unique_id to 4x1 numpy array or list}: unique_ids to starting box.
     #    Starting boxes only need to be provided if it is a new track. Bounding boxes in X1, Y1, X2, Y2 format.
     def multi_track(self, unique_ids, image, starting_boxes=None):
+        outputBoxes = np.zeros((len(unique_ids), 4))
+        for i in range(len(unique_ids)):
+            b = None
+            if starting_boxes is not None:
+                b = starting_boxes[unique_ids[i]]
+            outputBox = self.track(unique_ids[i],image,starting_box=b)
+            outputBoxes[i, :] = outputBox
+        return outputBoxes
+
+    def multi_track_0(self, unique_ids, image, starting_boxes=None):
         start_time = time.time()
         assert type(unique_ids) == list, 'unique_ids must be a list for multi_track'
         assert len(unique_ids) > 1, 'unique_ids must be at least 2 elements'

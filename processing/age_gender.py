@@ -34,7 +34,7 @@ class AgeGenderFilter(object):
             age_gender_driver = kwargs.get('age_gender_driver')
             self._driver_type = kwargs.get('age_gender_driver_type', AGE_GENDER_DRIVER_TYPE)
             if age_gender_driver is None:
-                model_path = kwargs.get('age_gender_model_path', AGE_GENDER_PATH)
+                model_path = kwargs.get('age_gender_model_path') or AGE_GENDER_PATH
                 if self._driver_type == AGE_GENDER_DRIVER_TYPE:
                     age_gender_driver = utils.get_driver(model_path, 'age gender')
                 else:
@@ -45,7 +45,7 @@ class AgeGenderFilter(object):
             gender_driver = kwargs.get('gender_driver')
             if gender_driver is None:
                 # Load default
-                model_path = kwargs.get('age_gender_model_path', AGE_GENDER_PATH)
+                model_path = kwargs.get('age_gender_model_path') or AGE_GENDER_PATH
                 gender_driver = utils.get_driver(model_path, 'age gender')
                 self._gender_driver_type = gender_driver.driver_name
 

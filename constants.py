@@ -1,5 +1,5 @@
 # Network Constants
-CROP_SIZE = 227
+CROP_SIZE = int(227/1)
 CROP_PAD = 2
 MAX_TRACK_LENGTH = 32
 LSTM_SIZE = 512

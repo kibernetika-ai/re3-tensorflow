@@ -62,6 +62,10 @@ def parse_args():
         help="path to the age model (default openvino age-gender-estimation",
     )
     parser.add_argument(
+        "--age_gender_model_path",
+        help="path to the age model (default openvino age-gender-estimation",
+    )
+    parser.add_argument(
         "--facenet-path", help="facenet model path",
     )
     parser.add_argument(
@@ -171,13 +175,14 @@ def track_faces(source: str = None,
                         cv2.resizeWindow("Output", int(img.shape[1] / 2), int(img.shape[0] / 2))
                         screen_init = False
                     cv2.imshow("Output", img)
+                    key_pressed = cv2.waitKey(1)
+                    if key_pressed == 27 or key_pressed == 1048603:
+                        break  # esc to quit
 
                 if video_writer is not None:
                     video_writer.write(img)
 
-                key_pressed = cv2.waitKey(1)
-                if key_pressed == 27 or key_pressed == 1048603:
-                    break  # esc to quit
+
 
     except (KeyboardInterrupt, SystemExit) as e:
         print("Caught %s: %s" % (e.__class__.__name__, e))
@@ -192,8 +197,9 @@ def track_faces(source: str = None,
         profiling = face_tracker.profiler.get_and_reset_dict()
         print("Profiling:")
         for k in profiling:
-            print(f" - {k}: {profiling[k]}")
-
+            p1,p2 = profiling[k]
+            print(f" - {k}: {p1}, {p2}, {p1/p2}")
+        print(f"Frames count: {cnt}")
         # print("report data: ", face_tracker.report(fps=fps))
 
         save_report(kwargs['report_dir'], face_tracker, fps=fps)

@@ -7,9 +7,8 @@ class Profiler(object):
         self._running = {}
 
     def add(self, name, value):
-        if name not in self._profile_data:
-            self._profile_data[name] = 0
-        self._profile_data[name] += value
+        p1,p2 = self._profile_data.get(name,(0,0))
+        self._profile_data[name] = (p1+value,p2+1)
 
     def start(self, name):
         if name in self._running:
@@ -26,7 +25,8 @@ class Profiler(object):
     def get_and_reset(self) -> str:
         ret = []
         for name, value in self.get_and_reset_dict().items():
-            ret.append(f"{name}: {value}")
+            p1,p2 = value
+            ret.append(f"{name}: {p1}, {p2}, {p1/p2}")
         return ", ".join(ret)
 
     def get_and_reset_dict(self) -> dict:

@@ -9,12 +9,14 @@ import jinja2
 import numpy as np
 
 from report import db
+from tools import images
 from tracker import faces_tracker
 from tracker import re3_tracker
 from utils import utils
 
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
+MAX_THUMBNAIL_HEIGHT = 300
 
 
 def parse_args():
@@ -270,14 +272,16 @@ def save_report(report_dir, face_tracker, fps=30):
 
         intervals = '; '.join(f'{i["start"]:.1f}-{i["end"]:.1f}' for i in v)
         duration = max([i['end'] - i['start'] for i in v])
-        images = []
+        thumbnails = []
         for image in class_images[class_id]:
+            if image.shape[0] > MAX_THUMBNAIL_HEIGHT:
+                image = images.image_resize(image, height=MAX_THUMBNAIL_HEIGHT)
             encoded = cv2.imencode('.jpg', image[:, :, ::-1])[1].tostring()
             encoded = base64.standard_b64encode(encoded).decode()
-            images.append(encoded)
+            thumbnails.append(encoded)
 
         report.append([
-            name, None, images, intervals, duration
+            name, None, thumbnails, intervals, duration
         ])
 
     db_api.end_transaction()

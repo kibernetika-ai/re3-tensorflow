@@ -64,16 +64,17 @@ class Re3Tracker(object):
     def _init_tf(self):
         self.imagePlaceholder1 = tf.placeholder(tf.uint8, shape=(None, CROP_SIZE, CROP_SIZE, 3))
         self.imagePlaceholder2 = tf.placeholder(tf.uint8, shape=(None, CROP_SIZE, CROP_SIZE, 3))
-        self.conv_layers1 = tf.placeholder(tf.float32, shape=(None, 37104))
-        self.conv_layers2 = tf.placeholder(tf.float32, shape=(None, 37104))
+        self.conv_layers1 = tf.placeholder(tf.float32, shape=(None, 1024))
+        #37104
+        self.conv_layers2 = tf.placeholder(tf.float32, shape=(None, 1024))
         self.prevLstmState = tuple([tf.placeholder(tf.float32, shape=(None, LSTM_SIZE)) for _ in range(4)])
         self.batch_size = tf.placeholder(tf.int32, shape=())
-        self.conv_layers1_out = network.inference_conf(self.imagePlaceholder1, num_unrolls=1,
+        self.conv_layers1_out,b = network.inference_conf(True,self.imagePlaceholder1, num_unrolls=1,
                                                        batch_size=self.batch_size)
-        self.conv_layers2_out = network.inference_conf(self.imagePlaceholder2, num_unrolls=1,
+        self.conv_layers2_out,_ = network.inference_conf(False,self.imagePlaceholder2, num_unrolls=1,
                                                        batch_size=self.batch_size, reuse=True)
         self.outputs, self.state1, self.state2 = network.inference_single(
-            self.conv_layers1, self.conv_layers2, num_unrolls=1, batch_size=self.batch_size, train=False,
+            self.conv_layers1, self.conv_layers2,b, num_unrolls=1, batch_size=self.batch_size, train=False,
             prevLstmState=self.prevLstmState)
 
     def _init_tf_0(self):

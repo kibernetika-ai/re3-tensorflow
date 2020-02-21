@@ -109,6 +109,21 @@ def fc_layer(input, num_channels, activation=tf.nn.relu,
     else:
         return fc_out
 
+def fc_layer_def(input, num_channels, activation=tf.nn.relu,
+        weights_initializer=None, bias_initializer=None, return_vars=False, summary=True):
+    if weights_initializer is None:
+        weights_initializer = tf.contrib.layers.xavier_initializer()
+    if bias_initializer is None:
+        bias_initializer = tf.zeros_initializer()
+    input_shape = input.get_shape().as_list()
+    if len(input_shape) > 2:
+        input = tf.reshape(input, [-1, np.prod(input_shape[1:])])
+        input_shape = input.get_shape().as_list()
+    input_channels = input.get_shape().as_list()[1]
+    W_fc = get_variable('W_fc', [input_channels*2, num_channels], initializer=weights_initializer, summary=summary)
+    b_fc = get_variable('b_fc', [num_channels], initializer=bias_initializer, summary=summary)
+    return W_fc[:input_channels,:],W_fc[input_channels:,:],b_fc
+
 def conv_layer(input, num_filters, filter_size, stride=1, num_groups=1, padding='VALID', scope=None,
         activation=tf.nn.relu, weights_initializer=None, bias_initializer=None, return_vars=False, summary=True):
     if type(filter_size) == int:

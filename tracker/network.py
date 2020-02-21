@@ -177,8 +177,80 @@ def training(loss, learning_rate):
     return train_op
 
 
+def alexnet_conv_layers_single(input, batch_size, num_unrolls):
+    print(f'input={input.shape}')
+    input = tf.to_float(input) - IMAGENET_MEAN
+    with tf.variable_scope('conv1'):
+        conv1 = tf_util.conv_layer(input, 96, 11, 4, padding='VALID')
+        pool1 = tf.nn.max_pool(
+                conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID',
+                name='pool1')
+        lrn1 = tf.nn.local_response_normalization(pool1, depth_radius=2,
+                alpha=2e-5, beta=0.75, bias=1.0, name='norm1')
 
-def alexnet_conv_layers_single(input, batch_size, num_unrolls,reuse=False):
+    with tf.variable_scope('conv1_skip'):
+        prelu_skip = tf_util.get_variable('prelu', shape=[16], dtype=tf.float32,
+                initializer=prelu_initializer)
+
+        conv1_skip = tf_util.prelu(tf_util.conv_layer(lrn1, 16, 1, activation=None),
+                prelu_skip)
+        conv1_skip = tf.transpose(conv1_skip, perm=[0,3,1,2])
+        conv1_skip_flat = tf_util.remove_axis(conv1_skip, [2,3])
+
+    with tf.variable_scope('conv2'):
+        conv2 = tf_util.conv_layer(lrn1, 256, 5, num_groups=2, padding='SAME')
+        pool2 = tf.nn.max_pool(
+                conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID',
+                name='pool2')
+        lrn2 = tf.nn.local_response_normalization(pool2, depth_radius=2,
+                alpha=2e-5, beta=0.75, bias=1.0, name='norm2')
+
+    with tf.variable_scope('conv2_skip'):
+        prelu_skip = tf_util.get_variable('prelu', shape=[32], dtype=tf.float32,
+                initializer=prelu_initializer)
+
+        conv2_skip = tf_util.prelu(tf_util.conv_layer(lrn2, 32, 1, activation=None),
+                prelu_skip)
+        conv2_skip = tf.transpose(conv2_skip, perm=[0,3,1,2])
+        conv2_skip_flat = tf_util.remove_axis(conv2_skip, [2,3])
+
+    with tf.variable_scope('conv3'):
+        conv3 = tf_util.conv_layer(lrn2, 384, 3, padding='SAME')
+
+    with tf.variable_scope('conv4'):
+        conv4 = tf_util.conv_layer(conv3, 384, 3, num_groups=2, padding='SAME')
+
+    with tf.variable_scope('conv5'):
+        conv5 = tf_util.conv_layer(conv4, 256, 3, num_groups=2, padding='SAME')
+        pool5 = tf.nn.max_pool(
+                conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID',
+                name='pool5')
+        pool5 = tf.transpose(pool5, perm=[0,3,1,2])
+        pool5_flat = tf_util.remove_axis(pool5, [2,3])
+
+    with tf.variable_scope('conv5_skip'):
+        prelu_skip = tf_util.get_variable('prelu', shape=[64], dtype=tf.float32,
+                initializer=prelu_initializer)
+
+        conv5_skip = tf_util.prelu(tf_util.conv_layer(conv5, 64, 1, activation=None),
+                prelu_skip)
+        conv5_skip = tf.transpose(conv5_skip, perm=[0,3,1,2])
+        conv5_skip_flat = tf_util.remove_axis(conv5_skip, [2,3])
+
+    with tf.variable_scope('big_concat'):
+        # Concat all skip layers.
+        skip_concat = tf.concat([conv1_skip_flat, conv2_skip_flat, conv5_skip_flat, pool5_flat], 1)
+        skip_concat_shape = skip_concat.get_shape().as_list()
+
+        # Split and merge image pairs
+        # (BxTx2)xHxWxC
+        pool5_reshape = tf.reshape(skip_concat, [batch_size, num_unrolls, 1, skip_concat_shape[-1]])
+        # (BxT)x(2xHxWxC)
+        reshaped = tf_util.remove_axis(pool5_reshape, [1,3])
+
+        return reshaped
+
+def alexnet_conv_layers_single_old(input, batch_size, num_unrolls,reuse=False):
     print(f'input={input.shape}')
     input = tf.to_float(input) - IMAGENET_MEAN
     with tf.variable_scope('conv1',reuse=reuse):
@@ -251,14 +323,22 @@ def alexnet_conv_layers_single(input, batch_size, num_unrolls,reuse=False):
 
         return reshaped
 
-def inference_conf(inputs,num_unrolls, batch_size=None,reuse=None):
+def inference_conf(isFirst,inputs,num_unrolls, batch_size=None,reuse=None):
     if batch_size is None:
         batch_size = int(inputs.get_shape().as_list()[0] / (num_unrolls))
     with tf.variable_scope('re3', reuse=reuse):
-        conv_layers = alexnet_conv_layers_single(inputs, batch_size, num_unrolls,reuse=reuse)
-    return conv_layers
+        conv_layers = alexnet_conv_layers_single(inputs, batch_size, num_unrolls)
+        with tf.variable_scope('fc6'):
+            w1,w2,b = tf_util.fc_layer_def(conv_layers, 1024)
+            if isFirst:
+                fc_out = tf.matmul(conv_layers, w1)
+            else:
+                fc_out = tf.matmul(conv_layers, w2)
+    return fc_out,b
 
-def inference_single(conv_layers1,conv_layers2, num_unrolls, train, batch_size=None, prevLstmState=None, reuse=None):
+
+
+def inference_single(conv_layers1,conv_layers2,bias, num_unrolls, train, batch_size=None, prevLstmState=None, reuse=None):
     # Data should be in order BxTx2xHxWxC where T is the number of unrolls
     # Mean subtraction
     if batch_size is None:
@@ -266,10 +346,10 @@ def inference_single(conv_layers1,conv_layers2, num_unrolls, train, batch_size=N
 
     print(f'num_unrolls={num_unrolls}')
     with tf.variable_scope('re3', reuse=reuse):
-        conv_layers = tf.concat([conv_layers1,conv_layers2],axis=-1)
         # Embed Fully Connected Layer
         with tf.variable_scope('fc6'):
-            fc6_out = tf_util.fc_layer(conv_layers, 1024)
+            fc6_out = conv_layers1+conv_layers2+bias
+            fc6_out = tf.nn.relu(fc6_out)
             print(f'fc6_out={fc6_out.shape}')
             # (BxT)xC
             fc6_reshape = tf.reshape(fc6_out, tf.stack([batch_size, num_unrolls, fc6_out.get_shape().as_list()[-1]]))

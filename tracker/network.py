@@ -89,6 +89,64 @@ def alexnet_conv_layers(input, batch_size, num_unrolls):
 
         return reshaped
 
+def inference_p1(inputs, num_unrolls, batch_size=None, reuse=None):
+    # Data should be in order BxTx2xHxWxC where T is the number of unrolls
+    # Mean subtraction
+    if batch_size is None:
+        batch_size = int(inputs.get_shape().as_list()[0] / (num_unrolls * 2))
+    if reuse is not None and not reuse:
+        reuse = None
+    print(f'num_unrolls={num_unrolls}')
+    with tf.variable_scope('re3', reuse=reuse):
+        conv_layers = alexnet_conv_layers(inputs, batch_size, num_unrolls)
+        print(f'conv_layers={conv_layers.shape}')
+        # Embed Fully Connected Layer
+        with tf.variable_scope('fc6'):
+            fc6_out = tf_util.fc_layer(conv_layers, 1024)
+            print(f'fc6_out={fc6_out.shape}')
+            # (BxT)xC
+            fc6_reshape = tf.reshape(fc6_out, tf.stack([batch_size, num_unrolls, fc6_out.get_shape().as_list()[-1]]))
+    return fc6_reshape
+
+def inference_p2(fc6_reshape, num_unrolls, batch_size=None, prevLstmState=None, reuse=None):
+    if reuse is not None and not reuse:
+        reuse = None
+    print(f'num_unrolls={num_unrolls}')
+    with tf.variable_scope('re3', reuse=reuse):
+        # LSTM stuff
+        swap_memory = num_unrolls > 1
+        with tf.variable_scope('lstm1'):
+            #lstm1 = CaffeLSTMCell(LSTM_SIZE, initializer=msra_initializer)
+            lstm1 = tf.contrib.rnn.LSTMCell(LSTM_SIZE, use_peepholes=True, initializer=msra_initializer, reuse=reuse)
+            if prevLstmState is not None:
+                state1 = tf.contrib.rnn.LSTMStateTuple(prevLstmState[0], prevLstmState[1])
+            else:
+                state1 = lstm1.zero_state(batch_size, dtype=tf.float32)
+            lstm1_outputs, state1 = tf.nn.dynamic_rnn(lstm1, fc6_reshape, initial_state=state1, swap_memory=swap_memory)
+
+        with tf.variable_scope('lstm2'):
+            #lstm2 = CaffeLSTMCell(LSTM_SIZE, initializer=msra_initializer)
+            lstm2 = tf.contrib.rnn.LSTMCell(LSTM_SIZE, use_peepholes=True, initializer=msra_initializer, reuse=reuse)
+            if prevLstmState is not None:
+                state2 = tf.contrib.rnn.LSTMStateTuple(prevLstmState[2], prevLstmState[3])
+            else:
+                state2 = lstm2.zero_state(batch_size, dtype=tf.float32)
+            lstm2_inputs = tf.concat([fc6_reshape, lstm1_outputs], 2)
+            lstm2_outputs, state2 = tf.nn.dynamic_rnn(lstm2, lstm2_inputs, initial_state=state2, swap_memory=swap_memory)
+
+            # (BxT)xC
+            outputs_reshape = tf_util.remove_axis(lstm2_outputs, 1)
+
+        # Final FC layer.
+        with tf.variable_scope('fc_output'):
+            fc_output_out = tf_util.fc_layer(outputs_reshape, 4, activation=None)
+
+    if prevLstmState is not None:
+        return fc_output_out, state1, state2
+    else:
+        return fc_output_out
+
+
 def inference(inputs, num_unrolls, train, batch_size=None, prevLstmState=None, reuse=None):
     # Data should be in order BxTx2xHxWxC where T is the number of unrolls
     # Mean subtraction

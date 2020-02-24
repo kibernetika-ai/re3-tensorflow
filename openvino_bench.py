@@ -11,14 +11,14 @@ print(list(serving.outputs.keys()))
 
 
 summ = 0
-NUM = 1000
+NUM = 1
 for i in range(NUM):
-    input1 = np.random.randn(1, 3,227, 227)
-    input2 = np.random.randn(1, 3, 227, 227)
+    input1 = np.random.randn(2, 3,227, 227)
+    #input2 = np.random.randn(1, 3, 227, 227)
     start = time.time()
-    outputs = serving.predict({'Placeholder': input1,'Placeholder_1': input2})
-    out = outputs['re3/fc6/Relu']
-    #print(out.shape)
+    outputs = serving.predict({'Placeholder': input1})
+    out = outputs['re3/fc6/Reshape']
+    print(out.shape)
     duration = time.time() - start
     summ += duration
 print(f'{NUM} inferences for {summ:.3f} sec')

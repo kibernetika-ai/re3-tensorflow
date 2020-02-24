@@ -54,6 +54,11 @@ def parse_args():
         help="re3 model checkpoints dir",
     )
     parser.add_argument(
+        "--re3_openvino_dir",
+        default="./models/re3/openvino/FP32/re3.xml",
+        help="re3 model checkpoints dir",
+    )
+    parser.add_argument(
         "--face-detection-path",
         help="face detection model path (default openvino face-detection-adas-0001)",
     )

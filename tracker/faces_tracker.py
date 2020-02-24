@@ -14,7 +14,8 @@ from tools import bbox
 from tools import images
 from tools.profiler import Profiler, profiler_pipe
 from tracker import facenet
-from tracker import re3_tracker
+from tracker import openvino_re3_tracker
+
 from tracker.tracked_face import TrackedFace
 from utils import detectors
 
@@ -42,6 +43,7 @@ class FaceTrackerReportItem(object):
 class FacesTracker(object):
     def __init__(self,
                  re3_checkpoint_dir: str = os.path.join(os.path.dirname(__file__), "..", LOG_DIR, "checkpoints"),
+                 re3_openvino_dir=None,
                  face_detection_path: str = None,
                  facenet_path: str = None,
                  intersection_threshold: float = 0.2,
@@ -72,8 +74,8 @@ class FacesTracker(object):
         kwargs['profiler'] = self._profiler
         self.agender = age_gender.AgeGenderFilter(**kwargs)
 
-        self._re3_tracker: re3_tracker.Re3Tracker = re3_tracker.Re3Tracker(
-            re3_checkpoint_dir, gpu_id=gpu_id, profiler=self._profiler
+        self._re3_tracker: openvino_re3_tracker.Re3Tracker = openvino_re3_tracker.OpenVinoRe3Tracker(
+            re3_checkpoint_dir,re3_openvino_dir, profiler=self._profiler
         )
         self._face_detector: detector.Detector = detectors.get_face_detector(face_detection_path)
 
